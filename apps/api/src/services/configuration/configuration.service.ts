@@ -103,6 +103,7 @@ export class ConfigurationService {
         default: environment.rootUrl
       }),
       STRIPE_SECRET_KEY: str({ default: '' }),
+      TRADING_AGENT_URL: str({ default: 'http://localhost:8000' }),
       TWITTER_ACCESS_TOKEN: str({ default: 'dummyAccessToken' }),
       TWITTER_ACCESS_TOKEN_SECRET: str({ default: 'dummyAccessTokenSecret' }),
       TWITTER_API_KEY: str({ default: 'dummyApiKey' }),

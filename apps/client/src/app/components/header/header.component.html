@@ -88,6 +88,21 @@
           >Resources</a
         >
       </li>
+      @if (hasPermissionToAccessTradingAgent) {
+        <li class="list-inline-item">
+          <a
+            class="d-none d-sm-block"
+            i18n
+            mat-flat-button
+            [ngClass]="{
+              'font-weight-bold': currentRoute === internalRoutes.tradingAgent.path,
+              'text-decoration-underline': currentRoute === internalRoutes.tradingAgent.path
+            }"
+            [routerLink]="routerLinkTradingAgent"
+            >Trading Assistant</a
+          >
+        </li>
+      }
       @if (
         hasPermissionForSubscription && user?.subscription?.type === 'Basic'
       ) {
@@ -300,6 +315,18 @@
             [routerLink]="routerLinkResources"
             >Resources</a
           >
+          @if (hasPermissionToAccessTradingAgent) {
+            <a
+              class="d-flex d-sm-none"
+              i18n
+              mat-menu-item
+              [ngClass]="{
+                'font-weight-bold': currentRoute === internalRoutes.tradingAgent.path
+              }"
+              [routerLink]="routerLinkTradingAgent"
+              >Trading Assistant</a
+            >
+          }
           @if (
             hasPermissionForSubscription && user?.subscription?.type === 'Basic'
           ) {

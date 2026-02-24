@@ -110,6 +110,7 @@ export class GfHeaderComponent implements OnChanges {
   public hasPermissionForSubscription: boolean;
   public hasPermissionToAccessAdminControl: boolean;
   public hasPermissionToAccessAssistant: boolean;
+  public hasPermissionToAccessTradingAgent: boolean;
   public hasPermissionToAccessFearAndGreedIndex: boolean;
   public hasPermissionToCreateUser: boolean;
   public impersonationId: string;
@@ -130,6 +131,7 @@ export class GfHeaderComponent implements OnChanges {
   public routerLinkPricing = publicRoutes.pricing.routerLink;
   public routerLinkRegister = publicRoutes.register.routerLink;
   public routerLinkResources = publicRoutes.resources.routerLink;
+  public routerLinkTradingAgent = internalRoutes.tradingAgent.routerLink;
 
   private unsubscribeSubject = new Subject<void>();
 
@@ -194,6 +196,11 @@ export class GfHeaderComponent implements OnChanges {
     this.hasPermissionToAccessAssistant = hasPermission(
       this.user?.permissions,
       permissions.accessAssistant
+    );
+
+    this.hasPermissionToAccessTradingAgent = hasPermission(
+      this.user?.permissions,
+      permissions.readAiPrompt
     );
 
     this.hasPermissionToAccessFearAndGreedIndex = hasPermission(

@@ -41,6 +41,7 @@ import { PlatformsModule } from './endpoints/platforms/platforms.module';
 import { PublicModule } from './endpoints/public/public.module';
 import { SitemapModule } from './endpoints/sitemap/sitemap.module';
 import { TagsModule } from './endpoints/tags/tags.module';
+import { TradingAgentModule } from './endpoints/trading-agent/trading-agent.module';
 import { WatchlistModule } from './endpoints/watchlist/watchlist.module';
 import { ExchangeRateModule } from './exchange-rate/exchange-rate.module';
 import { ExportModule } from './export/export.module';
@@ -136,6 +137,7 @@ import { UserModule } from './user/user.module';
     SubscriptionModule,
     SymbolModule,
     TagsModule,
+    TradingAgentModule,
     UserModule,
     WatchlistModule
   ],

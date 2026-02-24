@@ -37,6 +37,15 @@ export const routes: Routes = [
     title: internalRoutes.api.title
   },
   {
+    canActivate: [AuthGuard],
+    loadChildren: () =>
+      import('./pages/trading-agent/trading-agent-page.routes').then(
+        (m) => m.routes
+      ),
+    path: internalRoutes.tradingAgent.path,
+    title: internalRoutes.tradingAgent.title
+  },
+  {
     path: internalRoutes.auth.path,
     loadChildren: () =>
       import('./pages/auth/auth-page.routes').then((m) => m.routes),

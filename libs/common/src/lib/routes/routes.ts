@@ -74,6 +74,11 @@ export const internalRoutes: Record<string, InternalRoute> = {
     routerLink: ['/api'],
     title: 'Ghostfolio API'
   },
+  tradingAgent: {
+    path: 'trading-agent',
+    routerLink: ['/trading-agent'],
+    title: $localize`Trading Assistant`
+  },
   auth: {
     excludeFromAssistant: true,
     path: 'auth',
