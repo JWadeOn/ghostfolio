@@ -48,6 +48,7 @@
     "test:common": "npx dotenv-cli -e .env.example -- nx test common",
     "test:single": "nx run api:test --test-file object.helper.spec.ts",
     "test:ui": "npx dotenv-cli -e .env.example -- nx test ui",
+    "mvp-check": "cd ghostfolio-trading-agent && python3 scripts/run_mvp_requirements.py",
     "ts-node": "ts-node",
     "update": "nx migrate latest",
     "watch:server": "nx run api:copy-assets && nx run api:build --watch",
