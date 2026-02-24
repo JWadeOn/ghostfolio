@@ -7,6 +7,7 @@ import os
 import uuid
 from typing import Any
 
+import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -61,6 +62,23 @@ class ChatResponse(BaseModel):
     thread_id: str
 
 
+def _make_json_serializable(obj: Any) -> Any:
+    """Recursively convert numpy/pandas scalars to native Python for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: _make_json_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_make_json_serializable(v) for v in obj]
+    if isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    if isinstance(obj, (np.integer, int)):
+        return int(obj)
+    if isinstance(obj, (np.floating, float)):
+        return float(obj) if np.isfinite(obj) else None
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Main chat endpoint — processes natural language queries through the agent."""
@@ -100,8 +118,10 @@ async def chat(request: ChatRequest):
             "portfolio_timestamp": result.get("portfolio_timestamp"),
         }
 
+        response_data = result.get("response", {"summary": "No response generated", "confidence": 0})
+        response_data = _make_json_serializable(response_data)
         return ChatResponse(
-            response=result.get("response", {"summary": "No response generated", "confidence": 0}),
+            response=response_data,
             thread_id=thread_id,
         )
     except Exception as e:
@@ -152,7 +172,7 @@ async def get_regime():
     """Shortcut: get current market regime without full agent loop."""
     try:
         result = detect_regime()
-        return result
+        return _make_json_serializable(result)
     except Exception as e:
         logger.error(f"Regime detection failed: {e}")
         return {"error": str(e)}
