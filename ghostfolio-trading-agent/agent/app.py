@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from typing import Any
 
@@ -19,6 +20,17 @@ from agent.tools.scanner import scan_strategies
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Ensure LangSmith sees tracing config (LangChain reads os.environ, not Pydantic)
+_settings = get_settings()
+if _settings.langchain_api_key and _settings.langchain_tracing_v2:
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    os.environ["LANGCHAIN_API_KEY"] = _settings.langchain_api_key
+    os.environ["LANGCHAIN_PROJECT"] = _settings.langchain_project
+    logger.info("LangSmith tracing enabled (project=%s)", _settings.langchain_project)
+else:
+    os.environ.pop("LANGCHAIN_TRACING_V2", None)
+    logger.info("LangSmith tracing disabled (no API key or tracing_v2=false)")
 
 app = FastAPI(
     title="Ghostfolio Trading Intelligence Agent",
