@@ -13,6 +13,55 @@ import yfinance as yf
 
 logger = logging.getLogger(__name__)
 
+# yfinance only accepts these periods: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max
+VALID_YF_PERIODS = {"1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"}
+
+
+def _normalize_period(period: str) -> str:
+    """Map user-friendly timeframes to valid yfinance period strings."""
+    if not period or not isinstance(period, str):
+        return "60d"
+    p = period.strip().lower().replace(" ", "")
+    if p in VALID_YF_PERIODS:
+        return p
+    # Map N-day / Nd style to a valid period with enough data
+    if p.endswith("day") or (p.endswith("d") and len(p) > 1 and p[:-1].isdigit()):
+        try:
+            if p.endswith("day"):
+                n = int(p.replace("day", "").replace("-", "").strip() or "0")
+            else:
+                n = int(p[:-1])
+        except ValueError:
+            return "1mo"
+        if n <= 1:
+            return "1d"
+        if n <= 5:
+            return "5d"
+        if n <= 22:
+            return "1mo"   # ~22 trading days
+        if n <= 66:
+            return "3mo"   # ~66 trading days
+        if n <= 126:
+            return "6mo"
+        if n <= 252:
+            return "1y"
+        if n <= 504:
+            return "2y"
+        return "5y"
+    # "1month" -> "1mo", "3months" -> "3mo", etc.
+    if "month" in p or "mo" in p:
+        for mo, yf in [("6mo", "6mo"), ("3mo", "3mo"), ("1mo", "1mo")]:
+            if mo in p:
+                return yf
+        return "1mo"
+    if "year" in p or ("y" in p and "day" not in p):
+        for y, yf in [("10y", "10y"), ("5y", "5y"), ("2y", "2y"), ("1y", "1y")]:
+            if y in p:
+                return yf
+        return "1y"
+    return "1mo"
+
+
 # Simple in-memory cache: (symbols_key, period, interval) -> (timestamp, result)
 _cache: dict[tuple, tuple[float, dict]] = {}
 _CACHE_TTL = 300  # 5 minutes
@@ -201,7 +250,7 @@ def get_market_data(
 
     Args:
         symbols: List of ticker symbols (e.g., ["AAPL", "MSFT"])
-        period: yfinance period string (e.g., "60d", "1y")
+        period: yfinance period (e.g. "60d", "1y") or user-friendly (e.g. "20-day"); normalized internally
         interval: yfinance interval string (default "1d")
 
     Returns:
@@ -209,6 +258,7 @@ def get_market_data(
         - A list of dated records with OHLCV + indicators
         - {"error": "..."} if the symbol failed
     """
+    period = _normalize_period(period)
     # Check cache
     key = _cache_key(symbols, period, interval)
     now = time.time()
