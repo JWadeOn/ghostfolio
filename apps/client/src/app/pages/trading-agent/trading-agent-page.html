@@ -13,7 +13,7 @@
         [class.bg-light]="msg.role === 'user'"
         [class.text-danger]="msg.error"
       >
-        <strong>{{ msg.role === 'user' ? ($localize`You` | uppercase) : ($localize`Assistant` | uppercase) }}:</strong>
+        <strong>{{ (msg.role === 'user' ? labelUser : labelAssistant) | uppercase }}:</strong>
         <div class="mt-1">{{ msg.content }}</div>
       </div>
     }

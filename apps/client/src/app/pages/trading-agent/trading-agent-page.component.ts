@@ -40,6 +40,8 @@ interface ChatApiResponse {
   templateUrl: './trading-agent-page.html'
 })
 export class GfTradingAgentPageComponent {
+  public readonly labelAssistant = $localize`Assistant`;
+  public readonly labelUser = $localize`You`;
   public inputMessage = '';
   public isLoading = false;
   public messages: ChatMessage[] = [];
