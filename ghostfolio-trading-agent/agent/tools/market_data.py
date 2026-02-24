@@ -168,6 +168,9 @@ def _compute_atr(
 
 def _compute_indicators(df: pd.DataFrame) -> dict[str, Any]:
     """Compute all technical indicators and return list of dated records."""
+    # Ensure chronological order (oldest first) so warmup NaNs are in early rows
+    # and the last record (used as "latest" by formatter) has valid RSI/SMA.
+    df = df.sort_index(ascending=True).copy()
     close = df["Close"]
     high = df["High"]
     low = df["Low"]
