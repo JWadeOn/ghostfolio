@@ -91,19 +91,24 @@ def check_context_node(state: AgentState) -> dict[str, Any]:
 
         if tool_name == "get_market_data":
             if not symbols:
-                continue  # get_market_data requires symbols; skip if none extracted
-            tool_params["symbols"] = symbols
+                if intent != "risk_check":
+                    continue  # get_market_data requires symbols; skip if none extracted
+                tool_params["from_portfolio"] = True  # execute_tools will fill symbols from portfolio
+            else:
+                tool_params["symbols"] = symbols
             if timeframe:
                 tool_params["period"] = timeframe
         elif tool_name == "get_trade_history":
             tool_params["time_range"] = timeframe or "90d"
             if symbols:
                 tool_params["symbol"] = symbols[0]
-        elif tool_name == "check_risk" and symbols:
-            tool_params["symbol"] = symbols[0]
-            tool_params["direction"] = params.get("direction", "LONG")
-            if params.get("dollar_amount"):
-                tool_params["dollar_amount"] = params["dollar_amount"]
+        elif tool_name == "check_risk":
+            if symbols:
+                tool_params["symbol"] = symbols[0]
+                tool_params["direction"] = params.get("direction", "LONG")
+                if params.get("dollar_amount"):
+                    tool_params["dollar_amount"] = params["dollar_amount"]
+            # when no symbols, leave params empty → check_risk runs portfolio-level assessment
         elif tool_name == "scan_strategies":
             if symbols:
                 tool_params["symbols"] = symbols

@@ -89,3 +89,28 @@ class TestCheckRisk:
         result = check_risk("AAPL", "LONG", position_size_pct=5.0)
         # Should suggest smaller size since already at 4%
         assert result["suggested_size_pct"] <= 1.0
+
+    @patch("agent.tools.risk.get_portfolio_snapshot")
+    @patch("agent.tools.risk._get_sector")
+    def test_portfolio_level_risk_no_symbol(self, mock_sector, mock_portfolio):
+        """When symbol is None, check_risk runs portfolio-level assessment (no proposed trade)."""
+        mock_portfolio.return_value = {
+            "holdings": [
+                {"symbol": "GOOG", "weight": 1.0, "sectors": []},
+            ],
+            "summary": {
+                "total_value": 155460,
+                "total_cash": 0,
+                "holding_count": 1,
+            },
+        }
+        mock_sector.return_value = "Technology"
+
+        result = check_risk()
+        assert result.get("portfolio_level") is True
+        assert result.get("symbol") is None
+        assert "portfolio_summary" in result
+        assert result["portfolio_summary"]["holding_count"] == 1
+        assert result["passed"] is False
+        violation_rules = [v["rule"] for v in result["violations"]]
+        assert "concentration" in violation_rules or "zero_cash" in violation_rules

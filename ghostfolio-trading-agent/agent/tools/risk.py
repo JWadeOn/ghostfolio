@@ -28,18 +28,104 @@ def _get_sector(symbol: str) -> str | None:
         return None
 
 
+def _portfolio_level_risk(
+    total_value: float,
+    total_cash: float,
+    holdings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Assess portfolio-level risk (concentration, cash, diversification) when no specific trade is proposed."""
+    violations = []
+    warnings = []
+    cash_pct = (total_cash / total_value * 100) if total_value > 0 else 0
+    holding_count = len(holdings)
+
+    # Cash buffer
+    if cash_pct < 5 and total_value > 0:
+        violations.append({
+            "rule": "zero_cash",
+            "message": f"You have {cash_pct:.1f}% cash reserves",
+            "risk": "No liquidity for opportunities or emergency exits",
+            "recommendation": "Consider reducing position size to maintain 5-10% cash buffer",
+        })
+    elif cash_pct < 10 and total_value > 0:
+        warnings.append({
+            "rule": "low_cash",
+            "message": f"Cash is {cash_pct:.1f}% of portfolio",
+            "recommendation": "Aim for 5-10% cash buffer",
+        })
+
+    # Concentration: single position or few positions
+    if holding_count == 0:
+        pass  # No holdings
+    elif holding_count == 1:
+        h = holdings[0]
+        weight = h.get("weight", 0) * 100 if (h.get("weight", 0) or 0) < 1 else (h.get("weight", 0) or 0)
+        violations.append({
+            "rule": "concentration",
+            "message": f"Single holding represents {weight:.1f}% of portfolio",
+            "risk": "Maximum exposure to individual security risk",
+            "recommendation": "Diversify across 3-5 positions minimum",
+        })
+    else:
+        for h in holdings:
+            weight = h.get("weight", 0) * 100 if (h.get("weight", 0) or 0) < 1 else (h.get("weight", 0) or 0)
+            if weight > MAX_POSITION_PCT:
+                violations.append({
+                    "rule": "position_size",
+                    "message": f"{h.get('symbol', '?')} is {weight:.1f}% of portfolio (max {MAX_POSITION_PCT}%)",
+                    "symbol": h.get("symbol"),
+                    "current": weight,
+                    "limit": MAX_POSITION_PCT,
+                })
+
+    # Sector concentration across existing holdings
+    sector_weights: dict[str, float] = {}
+    for h in holdings:
+        sym = h.get("symbol")
+        weight = h.get("weight", 0) * 100 if (h.get("weight", 0) or 0) < 1 else (h.get("weight", 0) or 0)
+        if not sym:
+            continue
+        sector = _get_sector(sym)
+        if sector:
+            sector_weights[sector] = sector_weights.get(sector, 0) + weight
+    for sec, w in sector_weights.items():
+        if w > MAX_SECTOR_PCT:
+            violations.append({
+                "rule": "sector_concentration",
+                "message": f"Sector '{sec}' is {w:.1f}% of portfolio (max {MAX_SECTOR_PCT}%)",
+                "sector": sec,
+                "current": w,
+                "limit": MAX_SECTOR_PCT,
+            })
+
+    passed = len(violations) == 0
+    return {
+        "passed": passed,
+        "symbol": None,
+        "portfolio_level": True,
+        "violations": violations,
+        "warnings": warnings,
+        "portfolio_summary": {
+            "total_value": total_value,
+            "total_cash": total_cash,
+            "holding_count": holding_count,
+            "cash_pct": round(cash_pct, 2),
+        },
+    }
+
+
 def check_risk(
-    symbol: str,
+    symbol: str | None = None,
     direction: str = "LONG",
     position_size_pct: float | None = None,
     dollar_amount: float | None = None,
     client: GhostfolioClient | None = None,
 ) -> dict[str, Any]:
     """
-    Check if a proposed trade fits portfolio risk parameters.
+    Check if a proposed trade fits portfolio risk parameters, or assess portfolio-level risk when no symbol is given.
 
     Args:
-        symbol: Ticker symbol to trade
+        symbol: Ticker symbol to trade; if None, runs portfolio-level risk assessment (concentration, cash, diversification).
         direction: "LONG" or "SHORT"
         position_size_pct: Proposed position as % of portfolio (alternative to dollar_amount)
         dollar_amount: Proposed dollar amount (alternative to position_size_pct)
@@ -47,6 +133,7 @@ def check_risk(
 
     Returns:
         Dict with passed (bool), violations list, and suggested adjustments.
+        When symbol is None, returns portfolio-level risk (no proposed trade).
     """
     portfolio = get_portfolio_snapshot(client)
 
@@ -56,6 +143,10 @@ def check_risk(
     total_value = portfolio.get("summary", {}).get("total_value", 0)
     total_cash = portfolio.get("summary", {}).get("total_cash", 0)
     holdings = portfolio.get("holdings", [])
+
+    # Portfolio-level risk assessment when no symbol is provided
+    if symbol is None or symbol == "":
+        return _portfolio_level_risk(total_value, total_cash, holdings)
 
     # Compute proposed position size
     if dollar_amount and total_value > 0:

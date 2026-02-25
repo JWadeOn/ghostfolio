@@ -43,7 +43,22 @@ def execute_tools_node(state: AgentState) -> dict[str, Any]:
 
     for tool_spec in tools_needed:
         tool_name = tool_spec["tool"]
-        params = tool_spec.get("params", {})
+        params = dict(tool_spec.get("params", {}))
+
+        # Resolve symbols from portfolio for risk_check when user didn't mention symbols
+        if tool_name == "get_market_data" and (params.get("from_portfolio") or not params.get("symbols")):
+            portfolio_for_symbols = portfolio or state.get("portfolio")
+            if isinstance(portfolio_for_symbols, dict):
+                symbols_from_holdings = [
+                    h["symbol"] for h in portfolio_for_symbols.get("holdings", [])
+                    if h.get("symbol")
+                ]
+                if symbols_from_holdings:
+                    params["symbols"] = symbols_from_holdings
+            params.pop("from_portfolio", None)
+            if not params.get("symbols"):
+                logger.info("Skipping get_market_data: no symbols from portfolio")
+                continue
 
         tool_fn = TOOL_REGISTRY.get(tool_name)
         if not tool_fn:
