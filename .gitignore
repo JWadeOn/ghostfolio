@@ -39,6 +39,12 @@ npm-debug.log
 testem.log
 /typings
 
+
 # System Files
 .DS_Store
 Thumbs.db
+
+
+
+__pycache__/
+.cursor/
