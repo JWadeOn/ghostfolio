@@ -5,6 +5,7 @@ An AI-powered trading intelligence agent built with [LangGraph](https://github.c
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [Option A: Run Ghostfolio from the monorepo (Trading Assistant in UI)](#option-a-run-ghostfolio-from-the-monorepo-trading-assistant-in-ui)
 - [Use Cases](#use-cases)
 - [Architecture](#architecture)
 - [Strategies](#strategies)
@@ -44,19 +45,25 @@ LANGCHAIN_PROJECT=ghostfolio-trading-agent
 
 ### 2. Start all services
 
+From the `ghostfolio-trading-agent` directory:
+
 ```bash
-docker-compose up -d
+docker compose up --build
 ```
 
-This launches four services:
+This **builds Ghostfolio from source** (including the Trading Assistant UI), builds the Python agent, and starts four services in order with health checks:
 
-| Service           | URL                        | Description                   |
-| ----------------- | -------------------------- | ----------------------------- |
-| **Ghostfolio**    | http://localhost:3333      | Portfolio management platform |
-| **Trading Agent** | http://localhost:8000      | AI trading agent API          |
-| **Swagger Docs**  | http://localhost:8000/docs | Interactive API documentation |
-| **PostgreSQL**    | localhost:5432             | Ghostfolio database           |
-| **Redis**         | localhost:6379             | Ghostfolio cache              |
+| Service           | URL                        | Description                                          |
+| ----------------- | -------------------------- | ---------------------------------------------------- |
+| **Ghostfolio**    | http://localhost:3333      | Portfolio app + Trading Assistant (from repo source) |
+| **Trading Agent** | http://localhost:8000      | AI trading agent API                                 |
+| **Swagger Docs**  | http://localhost:8000/docs | Interactive API documentation                        |
+| **PostgreSQL**    | localhost:5432             | Ghostfolio database                                  |
+| **Redis**         | localhost:6379             | Ghostfolio cache                                     |
+
+Postgres and Redis start first and are health-checked; then Ghostfolio (migrate + seed + server); then the trading agent. The agent talks to Ghostfolio at `http://ghostfolio:3333` on the Docker network.
+
+**First-time build:** Building Ghostfolio from source can take several minutes.
 
 **Start only the agent** (e.g. with Ghostfolio already running elsewhere):
 
@@ -85,6 +92,91 @@ or
 python3 -m uvicorn agent.app:app
  --host 0.0.0.0 --port 8000
 ```
+
+---
+
+## Option A: Run Ghostfolio from the monorepo (Trading Assistant in UI)
+
+To see the **Trading Assistant** link in the top nav and use the in-app chat, run the Ghostfolio **client** and **API** from this repo instead of the official Docker image. You can reuse PostgreSQL, Redis, and the trading-agent from Docker.
+
+### 1. Start Postgres, Redis, and the trading agent (no Ghostfolio container)
+
+From the `ghostfolio-trading-agent` directory:
+
+```bash
+docker-compose up -d postgres redis trading-agent
+```
+
+Ensure `ghostfolio-trading-agent/.env` has `GHOSTFOLIO_ACCESS_TOKEN` and `ANTHROPIC_API_KEY` (see [Quick Start](#1-configure-environment-variables)). The agent will talk to the Ghostfolio API we start in step 3.
+
+**Important:** The API runs on your **host** (localhost:3333), but the trading-agent runs **inside Docker**. So the container must use a URL that reaches the host. In `ghostfolio-trading-agent/.env` set:
+
+```env
+GHOSTFOLIO_API_URL=http://host.docker.internal:3333
+```
+
+(Mac/Windows Docker use `host.docker.internal`; on Linux use your machine’s IP or `--add-host=host.docker.internal:host-gateway` when running the container.)
+
+### 2. Configure the monorepo for local Postgres/Redis
+
+From the **monorepo root** (parent of `ghostfolio-trading-agent`), ensure `.env` exists and points at the same Postgres and Redis. For the Docker Compose above (user/password, no Redis password), use:
+
+```env
+# Postgres (same as docker-compose: user / password)
+POSTGRES_DB=ghostfolio-db
+POSTGRES_HOST=localhost
+POSTGRES_USER=user
+POSTGRES_PASSWORD=password
+DATABASE_URL=postgresql://user:password@localhost:5432/ghostfolio-db?connect_timeout=300&sslmode=prefer
+
+# Redis (no password for redis:alpine)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+
+# Required for Ghostfolio
+ACCESS_TOKEN_SALT=super-secret-salt
+JWT_SECRET_KEY=super-secret-jwt-key
+```
+
+(Adjust if you use different credentials.) The API reads `PORT` from env; it defaults to **3333**, which matches the client proxy.
+
+### 3. Database schema and seed
+
+From the monorepo root:
+
+```bash
+npm run database:push
+npm run database:seed
+```
+
+### 4. Start the API (port 3333)
+
+From the monorepo root:
+
+```bash
+npm run start:server
+```
+
+Leave this running. The API serves on **http://localhost:3333** and proxies chat to the trading agent at `TRADING_AGENT_URL` (default `http://localhost:8000`).
+
+### 5. Start the client (proxies to API)
+
+In a **second terminal**, from the monorepo root:
+
+```bash
+npm run start:client
+```
+
+Then open the URL the dev server prints (typically **https://localhost:4200** — accept the self-signed cert if prompted).
+
+### 6. Sign in and open Trading Assistant
+
+- Register or sign in (e.g. with a **security token** from Ghostfolio Settings → Account).
+- In the top nav you should see **Portfolio**, **Accounts**, **Resources**, and **Trading Assistant**.
+- Click **Trading Assistant** to use the chat.
+
+If you don’t see Trading Assistant, confirm you’re logged in and that your user has the `readAiPrompt` permission (default for USER, ADMIN, and DEMO roles).
 
 ---
 
@@ -245,17 +337,17 @@ Targets tight consolidation near highs with declining volume — classic breakou
 
 ## Tools
 
-| Tool                       | Description                                                                                                                               |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| **get_market_data**        | Fetches OHLCV data and computes 20+ technical indicators (RSI, MACD, SMAs, EMAs, Bollinger Bands, ATR, relative volume, 52-week position) |
-| **detect_regime**          | Classifies the market across 5 dimensions using SPY, VIX, and 9 sector ETFs                                                               |
-| **scan_strategies**        | Runs all strategies against a symbol universe, filtered by current regime                                                                 |
-| **get_portfolio_snapshot** | Retrieves holdings, performance, and account data from Ghostfolio                                                                         |
-| **check_risk**             | Validates a proposed **buy** (position size, sector, correlation, cash). For **sell** questions, runs sell-specific logic: concentration and lack of cash are reasons *to* sell; returns position P&L, reasons_to_sell, and portfolio-after-sale. |
-| **get_trade_history**      | Pulls order history from Ghostfolio and computes P&L, win rate, and other aggregate stats                                                 |
-| **lookup_symbol**          | Searches Ghostfolio for symbols by name or ticker                                                                                         |
+| Tool                       | Description                                                                                                                                                                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **get_market_data**        | Fetches OHLCV data and computes 20+ technical indicators (RSI, MACD, SMAs, EMAs, Bollinger Bands, ATR, relative volume, 52-week position)                                                                                                         |
+| **detect_regime**          | Classifies the market across 5 dimensions using SPY, VIX, and 9 sector ETFs                                                                                                                                                                       |
+| **scan_strategies**        | Runs all strategies against a symbol universe, filtered by current regime                                                                                                                                                                         |
+| **get_portfolio_snapshot** | Retrieves holdings, performance, and account data from Ghostfolio                                                                                                                                                                                 |
+| **check_risk**             | Validates a proposed **buy** (position size, sector, correlation, cash). For **sell** questions, runs sell-specific logic: concentration and lack of cash are reasons _to_ sell; returns position P&L, reasons_to_sell, and portfolio-after-sale. |
+| **get_trade_history**      | Pulls order history from Ghostfolio and computes P&L, win rate, and other aggregate stats                                                                                                                                                         |
+| **lookup_symbol**          | Searches Ghostfolio for symbols by name or ticker                                                                                                                                                                                                 |
 
-**Risk check: buy vs sell** — Buy (e.g. "Can I add $10k TSLA?") uses pass/fail vs limits. Sell (e.g. "Should I sell GOOG?") treats concentration and no cash as reasons *to* sell; response includes unrealized P&L and portfolio impact, with no "FAIL" verdict for concentration. *MVP gap:* Tax implications and formal exit-timing rules are not yet modeled.
+**Risk check: buy vs sell** — Buy (e.g. "Can I add $10k TSLA?") uses pass/fail vs limits. Sell (e.g. "Should I sell GOOG?") treats concentration and no cash as reasons _to_ sell; response includes unrealized P&L and portfolio impact, with no "FAIL" verdict for concentration. _MVP gap:_ Tax implications and formal exit-timing rules are not yet modeled.
 
 ---
 
@@ -427,9 +519,9 @@ Hard gate. All items required to pass:
 - [x] Tool calls execute successfully and return structured results
 - [x] Agent synthesizes tool results into coherent responses
 - [x] Conversation history maintained across turns
-- [ ] Basic error handling (graceful failure, not crashes)
-- [ ] At least one domain-specific verification check
-- [ ] Simple evaluation: 5+ test cases with expected outcomes
+- [x] Basic error handling (graceful failure, not crashes)
+- [x] At least one domain-specific verification check
+- [x] Simple evaluation: 5+ test cases with expected outcomes
 - [ ] Deployed and publicly accessible
 
 > A simple agent with reliable tool execution beats a complex agent that hallucinates or fails unpredictably.

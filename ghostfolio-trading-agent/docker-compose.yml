@@ -1,4 +1,9 @@
-version: '3.8'
+# Full stack: Ghostfolio (built from source, with Trading Assistant) + Python agent.
+# Run from ghostfolio-trading-agent/:  docker compose up --build
+#
+# Ghostfolio:  http://localhost:3333
+# Trading agent: http://localhost:8000
+# Agent talks to Ghostfolio via http://ghostfolio:3333 on the Docker network.
 
 services:
   postgres:
@@ -11,30 +16,55 @@ services:
       - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U user -d ghostfolio-db']
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:alpine
     ports:
       - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   ghostfolio:
-    image: ghostfolio/ghostfolio:latest
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: ghostfolio/ghostfolio:local
     environment:
       DATABASE_URL: postgresql://user:password@postgres:5432/ghostfolio-db?sslmode=prefer
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ''
       JWT_SECRET_KEY: super-secret-jwt-key
       ACCESS_TOKEN_SALT: super-secret-salt
+      PORT: 3333
+      TRADING_AGENT_URL: http://trading-agent:8000
     ports:
       - '3333:3333'
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'curl -f http://localhost:3333/api/v1/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   trading-agent:
     build: .
     environment:
-      GHOSTFOLIO_API_URL: http://ghostfolio:3333
+      GHOSTFOLIO_API_URL: ${GHOSTFOLIO_API_URL:-http://ghostfolio:3333}
       GHOSTFOLIO_ACCESS_TOKEN: ${GHOSTFOLIO_ACCESS_TOKEN}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       LANGCHAIN_TRACING_V2: 'true'
@@ -43,7 +73,8 @@ services:
     ports:
       - '8000:8000'
     depends_on:
-      - ghostfolio
+      ghostfolio:
+        condition: service_healthy
 
 volumes:
   postgres_data:
