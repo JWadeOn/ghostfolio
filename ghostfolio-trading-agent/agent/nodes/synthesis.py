@@ -11,6 +11,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from agent.config import get_settings
 from agent.state import AgentState
+from agent.nodes.conversation import format_recent_conversation
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,10 @@ CRITICAL RULES:
 INTENT_PROMPTS = {
     "price_quote": """You are answering a request for the current price or quote of a symbol.
 Use the get_market_data tool results. For each symbol requested:
-- Lead with the current/latest close price (and say it's the latest close from the data).
-- Optionally add: today's open, high, low, volume, or a one-line context (e.g. "up X% over the period").
-Keep the response short and direct. Do not make up prices — use only the numbers from the tool results.""",
+- Lead with the current/latest close price. State the actual date of the data (see "Latest data date" below).
+- Do NOT say "Today" or "Today's session" unless the latest data date is literally today. If the data is from a past date, say "Session of [date]" or "As of [date]" (e.g. "As of December 11, 2025").
+- Optionally add: open, high, low, volume for that session, or a one-line context.
+Keep the response short and direct. Use only numbers from the tool results.""",
 
     "regime_check": """You are analyzing the current market regime. Present the 5-dimension classification clearly:
 - Trend (trending_up/down/ranging)
@@ -110,6 +112,22 @@ def synthesize_node(state: AgentState) -> dict[str, Any]:
                 result_str = result_str[:5000] + "... (truncated)"
             context_parts.append(f"### {tool_name}\n```json\n{result_str}\n```")
 
+    # For price_quote (and risk_check/chart_validation that use current price), inject latest data date
+    if intent in ("price_quote", "risk_check", "chart_validation"):
+        md = tool_results.get("get_market_data", {})
+        if md and isinstance(md, dict):
+            dates = []
+            for sym, data in md.items():
+                if isinstance(data, list) and data:
+                    last = data[-1]
+                    if isinstance(last, dict) and last.get("date"):
+                        dates.append(f"{sym} -> {last['date']}")
+            if dates:
+                context_parts.append(
+                    "## Latest data date (use this — do not say 'today' unless it is today)\n"
+                    + ", ".join(dates)
+                )
+
     if regime and "detect_regime" not in tool_results:
         context_parts.append(f"## Cached Regime\n```json\n{json.dumps(regime, default=str)}\n```")
 
@@ -125,11 +143,16 @@ def synthesize_node(state: AgentState) -> dict[str, Any]:
             system += f"- {issue}\n"
         system += "\nPlease regenerate your response using only the data provided. Fix the issues listed above."
 
-    # Get user message
+    # Get user message and optional recent conversation (for "it" / "that stock" resolution)
     user_text = ""
     if messages:
         last = messages[-1]
         user_text = last.content if hasattr(last, "content") else str(last)
+    recent_conv = format_recent_conversation(messages)
+    if recent_conv:
+        user_block = f"Recent conversation:\n{recent_conv}\n\nTrader's question: {user_text}"
+    else:
+        user_block = f"Trader's question: {user_text}"
 
     context_block = "\n\n".join(context_parts) if context_parts else "No tool results available."
 
@@ -143,7 +166,7 @@ def synthesize_node(state: AgentState) -> dict[str, Any]:
 
         response = llm.invoke([
             SystemMessage(content=system),
-            HumanMessage(content=f"Trader's question: {user_text}\n\n{context_block}"),
+            HumanMessage(content=f"{user_block}\n\n{context_block}"),
         ])
 
         synthesis = response.content.strip()

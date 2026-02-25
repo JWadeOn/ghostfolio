@@ -1,7 +1,13 @@
 """Unit tests for the verification node: fact-check and guardrails."""
 
 import pytest
-from agent.nodes.verification import verify_node, _check_facts, _check_guardrails
+from datetime import datetime, timezone, timedelta
+from agent.nodes.verification import (
+    verify_node,
+    _check_facts,
+    _check_guardrails,
+    _check_price_quote_freshness,
+)
 
 
 def test_verify_node_fails_when_synthesis_contains_unsourced_number():
@@ -66,3 +72,45 @@ def test_verify_node_guardrail_requires_stop_and_target_for_trade_suggestion():
     assert result["verification_result"]["guardrail_issues"] >= 1
     issues_text = " ".join(result["verification_result"]["issues"]).lower()
     assert "stop" in issues_text or "target" in issues_text
+
+
+def test_price_quote_freshness_fails_when_data_not_from_today():
+    """When intent is price_quote and latest data date is before today, verification should fail."""
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    state = {
+        "synthesis": "TSLA is trading at $446.89.",
+        "tool_results": {
+            "get_market_data": {
+                "TSLA": [
+                    {"date": yesterday, "close": 446.89, "open": 448.95},
+                ],
+            },
+        },
+        "intent": "price_quote",
+        "verification_attempts": 0,
+    }
+    result = verify_node(state)
+    assert result["verification_result"]["passed"] is False
+    assert any(
+        "not current trading day" in str(i) or "as of" in str(i).lower()
+        for i in result["verification_result"]["issues"]
+    )
+
+
+def test_price_quote_freshness_passes_when_data_from_today():
+    """When intent is price_quote and latest data date is today, no freshness issue."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    state = {
+        "synthesis": "TSLA is trading at $409.00.",
+        "tool_results": {
+            "get_market_data": {
+                "TSLA": [{"date": today, "close": 409.0, "open": 408.5}],
+            },
+        },
+        "intent": "price_quote",
+        "verification_attempts": 0,
+    }
+    result = verify_node(state)
+    assert not any(
+        "not current trading day" in str(i) for i in result["verification_result"]["issues"]
+    )

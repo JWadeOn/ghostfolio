@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from agent.state import AgentState
@@ -75,6 +76,44 @@ def _check_facts(synthesis: str, tool_results: dict) -> list[str]:
             issues.append(
                 f"Number {value} (in '...{context.strip()}...') not found in tool results"
             )
+
+    return issues
+
+
+def _check_price_quote_freshness(intent: str, tool_results: dict) -> list[str]:
+    """
+    Domain check: ensure stated prices are from the current trading day.
+    Applies to price_quote and risk_check (buy/sell recommendations).
+    """
+    issues = []
+    if intent not in ("price_quote", "risk_check"):
+        return issues
+
+    md = tool_results.get("get_market_data")
+    if not md or not isinstance(md, dict):
+        return issues
+
+    today_utc = datetime.now(timezone.utc).date()
+
+    for symbol, data in md.items():
+        if not isinstance(data, list) or not data:
+            continue
+        last_record = data[-1]
+        if not isinstance(last_record, dict):
+            continue
+        date_str = last_record.get("date")
+        if not date_str:
+            continue
+        try:
+            # date is "YYYY-MM-DD"
+            data_date = datetime.strptime(date_str[:10], "%Y-%m-%d").date()
+            if data_date < today_utc:
+                issues.append(
+                    f"Price data for {symbol} is from {date_str}, not current trading day — "
+                    "may be delayed or previous close; consider stating 'as of [date]'."
+                )
+        except (ValueError, TypeError):
+            continue
 
     return issues
 
@@ -153,10 +192,14 @@ def verify_node(state: AgentState) -> dict[str, Any]:
     fact_issues = _check_facts(synthesis, tool_results)
     all_issues.extend(fact_issues)
 
-    # 2. Confidence score
+    # 2. Price quote domain check: data freshness
+    price_quote_issues = _check_price_quote_freshness(intent, tool_results)
+    all_issues.extend(price_quote_issues)
+
+    # 3. Confidence score
     confidence = _compute_confidence(state)
 
-    # 3. Risk guardrails
+    # 4. Risk guardrails
     guardrail_issues = _check_guardrails(synthesis, intent, tool_results)
     all_issues.extend(guardrail_issues)
 

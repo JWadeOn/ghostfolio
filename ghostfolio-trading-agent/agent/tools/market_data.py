@@ -269,6 +269,7 @@ def get_market_data(
     symbols: list[str],
     period: str = "60d",
     interval: str = "1d",
+    bypass_cache: bool = False,
 ) -> dict[str, Any]:
     """
     Fetch OHLCV data and compute technical indicators for given symbols.
@@ -277,6 +278,7 @@ def get_market_data(
         symbols: List of ticker symbols (e.g., ["AAPL", "MSFT"])
         period: yfinance period (e.g. "60d", "1y") or user-friendly (e.g. "20-day"); normalized internally
         interval: yfinance interval string (default "1d")
+        bypass_cache: If True, skip cache (use for price_quote to get freshest data)
 
     Returns:
         Dict keyed by symbol. Each value is either:
@@ -284,16 +286,27 @@ def get_market_data(
         - {"error": "..."} if the symbol failed
     """
     period = _normalize_period(period)
-    # Check cache
-    key = _cache_key(symbols, period, interval)
-    now = time.time()
-    if key in _cache:
-        ts, cached_result = _cache[key]
-        if now - ts < _CACHE_TTL:
-            logger.info(f"Cache hit for {symbols}")
-            return cached_result
+    # Check cache (skip for price_quote / bypass_cache)
+    if not bypass_cache:
+        key = _cache_key(symbols, period, interval)
+        now = time.time()
+        if key in _cache:
+            ts, cached_result = _cache[key]
+            if now - ts < _CACHE_TTL:
+                logger.info(f"Cache hit for {symbols}")
+                return cached_result
 
     raw_data = _fetch_with_retry(symbols, period, interval)
+
+    # For intraday quote request (1d/1h), fall back to daily bars if a symbol has no intraday data
+    if period == "1d" and interval == "1h":
+        empty_symbols = [s for s in symbols if raw_data.get(s) is not None and raw_data[s].empty]
+        if empty_symbols:
+            logger.info(f"Intraday empty for {empty_symbols}, falling back to 5d/1d")
+            fallback = _fetch_with_retry(empty_symbols, "5d", "1d")
+            for s in empty_symbols:
+                if s in fallback and not fallback[s].empty:
+                    raw_data[s] = fallback[s]
 
     result: dict[str, Any] = {}
     for symbol in symbols:
@@ -307,7 +320,9 @@ def get_market_data(
             logger.error(f"Indicator computation failed for {symbol}: {e}")
             result[symbol] = {"error": f"Indicator computation failed: {str(e)}"}
 
-    # Update cache
-    _cache[key] = (now, result)
+    # Update cache only when not bypassing
+    if not bypass_cache:
+        key = _cache_key(symbols, period, interval)
+        _cache[key] = (now, result)
 
     return result

@@ -98,6 +98,12 @@ def check_context_node(state: AgentState) -> dict[str, Any]:
                 tool_params["symbols"] = symbols
             if timeframe:
                 tool_params["period"] = timeframe
+            # Use fresh intraday data (1d/1h) for intents that need current price: quote, risk check, chart validation
+            if intent in ("price_quote", "risk_check", "chart_validation"):
+                tool_params["bypass_cache"] = True
+                if not timeframe:  # don't override if user asked for a specific period
+                    tool_params["period"] = "1d"
+                    tool_params["interval"] = "1h"
         elif tool_name == "get_trade_history":
             tool_params["time_range"] = timeframe or "90d"
             if symbols:
