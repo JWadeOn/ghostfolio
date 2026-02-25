@@ -105,7 +105,8 @@ def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, 
             "value": value,
             "value_in_base_currency": value_bc,
             "investment": h.get("investment", 0) or 0,  # cost basis for this position
-            "weight": h.get("allocationInPercentage", 0),
+            # Ghostfolio returns allocationInPercentage in 0-1 (e.g. 1.0 = 100%); normalize to 0-100 for consistent use in risk and synthesis
+            "weight": (h.get("allocationInPercentage", 0) or 0) * 100,
             "performance_pct": h.get("netPerformancePercentage", 0),
             "performance_value": h.get("netPerformance", 0),
             "asset_class": h.get("assetClass", ""),
