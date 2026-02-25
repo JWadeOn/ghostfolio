@@ -58,6 +58,12 @@ eval_cases = [
         "expected_tools": ["get_market_data"],
     },
     {
+        "input": "Show me my portfolio",
+        "expected_intent": "portfolio_overview",
+        "expected_tools": ["get_portfolio_snapshot"],
+        "expected_output_contains": ["portfolio", "position", "value"],
+    },
+    {
         "input": "Hello, who are you?",
         "expected_intent": "general",
         "expected_tools": [],

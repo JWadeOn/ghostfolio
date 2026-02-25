@@ -25,7 +25,7 @@ export class TradingAgentService {
   public async chat(
     body: TradingAgentChatRequest
   ): Promise<TradingAgentChatResponse> {
-    const baseUrl = this.configurationService.get<string>('TRADING_AGENT_URL');
+    const baseUrl = this.configurationService.get('TRADING_AGENT_URL');
     if (!baseUrl?.trim()) {
       throw new HttpException(
         { error: 'Trading agent is not configured' },

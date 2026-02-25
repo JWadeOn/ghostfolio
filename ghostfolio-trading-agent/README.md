@@ -301,6 +301,15 @@ All configuration is managed through environment variables (or a `.env` file). S
 | `LANGCHAIN_API_KEY`       | No       | —                          | LangSmith API key            |
 | `LANGCHAIN_PROJECT`       | No       | `ghostfolio-trading-agent` | LangSmith project name       |
 
+**Getting the Ghostfolio access token:** Use your **security token** (the one from **Settings → Account** in Ghostfolio). Put it in `ghostfolio-trading-agent/.env` as `GHOSTFOLIO_ACCESS_TOKEN=<your-security-token>`. The agent automatically exchanges this for a JWT when calling portfolio/account endpoints, so you do **not** need to paste a JWT.
+
+- **If you already saved your token:** use that value for `GHOSTFOLIO_ACCESS_TOKEN`. Ghostfolio never shows the token again after creation.
+- **If you don’t have it:** In Ghostfolio go to **Settings → Account → Generate a new security token**, copy it immediately (it’s shown only once), then set it in `.env`. Generating a new one invalidates the previous token.
+
+Without a valid token, requests to `/api/v1/portfolio/*` and `/api/v1/account` return **401 Unauthorized**.
+
+**If you get 403 Forbidden** when the agent calls Ghostfolio: the security token in `GHOSTFOLIO_ACCESS_TOKEN` does not match the hash stored in Ghostfolio. Common causes: (1) the token was regenerated in Ghostfolio and the old value is still in `.env`, (2) Ghostfolio’s `ACCESS_TOKEN_SALT` (in the Ghostfolio API env) was changed after the token was created, so the stored hash no longer matches. Fix: generate a new security token in Ghostfolio (Settings → Account), put it in `.env` immediately, and ensure `ACCESS_TOKEN_SALT` is set and not changed afterward.
+
 ---
 
 ## Running Tests
@@ -411,7 +420,7 @@ Confirm the second reply still uses data (e.g. mentions MSFT and/or AAPL with nu
 
 Hard gate. All items required to pass:
 
-- [ ] Agent responds to natural language queries in your chosen domain
+- [x] Agent responds to natural language queries in your chosen domain
 - [ ] At least 3 functional tools the agent can invoke
 - [ ] Tool calls execute successfully and return structured results
 - [ ] Agent synthesizes tool results into coherent responses

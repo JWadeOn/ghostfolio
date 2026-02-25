@@ -14,25 +14,57 @@ logger = logging.getLogger(__name__)
 _TIMEOUT = 10.0  # seconds
 
 
+def _is_jwt(token: str) -> bool:
+    """JWTs from Ghostfolio start with eyJ (base64 of {")."""
+    return bool(token and token.strip().startswith("eyJ"))
+
+
 class GhostfolioClient:
     """Simple HTTP client for the Ghostfolio REST API."""
 
     def __init__(self, base_url: str | None = None, access_token: str | None = None):
         settings = get_settings()
         self.base_url = (base_url or settings.ghostfolio_api_url).rstrip("/")
-        self.access_token = access_token or settings.ghostfolio_access_token
+        raw_token = (access_token or settings.ghostfolio_access_token or "").strip()
+        # Ghostfolio portfolio/account routes require a JWT. The value in .env is the
+        # "security token" (access token); we must exchange it for a JWT via auth/anonymous.
+        if raw_token and not _is_jwt(raw_token):
+            self.access_token = self._exchange_for_jwt(raw_token)
+        else:
+            self.access_token = raw_token or None
         self._client = httpx.Client(
             base_url=self.base_url,
             timeout=_TIMEOUT,
             headers=self._auth_headers(),
         )
 
+    def _exchange_for_jwt(self, security_token: str) -> str | None:
+        """Exchange the Ghostfolio security token for a JWT. Returns None on failure."""
+        url = f"{self.base_url}/api/v1/auth/anonymous"
+        body = {"accessToken": security_token}
+        try:
+            resp = httpx.post(url, json=body, timeout=_TIMEOUT)
+            if resp.status_code == 403:
+                logger.warning(
+                    "Ghostfolio returned 403 Forbidden on auth/anonymous. "
+                    "The security token in GHOSTFOLIO_ACCESS_TOKEN does not match Ghostfolio's stored hash. "
+                    "Ensure the token is the one currently in Ghostfolio (generate a new one in Settings → Account if needed) "
+                    "and that Ghostfolio's ACCESS_TOKEN_SALT has not changed since the token was created."
+                )
+                return None
+            resp.raise_for_status()
+            data = resp.json()
+            jwt = data.get("authToken")
+            if jwt:
+                logger.info("Exchanged security token for JWT successfully")
+                return jwt
+        except Exception as e:
+            logger.warning("Failed to exchange security token for JWT: %s", e)
+        return None
+
     def _auth_headers(self) -> dict[str, str]:
         if not self.access_token:
             return {}
-        # Support both JWT bearer tokens and API security tokens
-        if self.access_token.startswith("eyJ"):
-            return {"Authorization": f"Bearer {self.access_token}"}
         return {"Authorization": f"Bearer {self.access_token}"}
 
     def _get(self, path: str, params: dict | None = None) -> Any:
@@ -69,7 +101,8 @@ class GhostfolioClient:
         return self._get("/api/v1/portfolio/holdings", params={"range": range_})
 
     def get_performance(self, range_: str = "1d") -> Any:
-        return self._get("/api/v1/portfolio/performance", params={"range": range_})
+        # Ghostfolio exposes performance under API v2 only
+        return self._get("/api/v2/portfolio/performance", params={"range": range_})
 
     def get_portfolio_details(self, range_: str = "max") -> Any:
         return self._get("/api/v1/portfolio/details", params={"range": range_})
