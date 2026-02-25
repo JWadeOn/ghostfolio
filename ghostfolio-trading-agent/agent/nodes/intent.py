@@ -23,7 +23,7 @@ Given the trader's message, classify it into one of these categories:
 - opportunity_scan: asking to find setups, scan watchlist, find trades, screen stocks
 - chart_validation: asking about specific support/resistance levels, patterns, chart analysis for a symbol
 - journal_analysis: asking about their past trading performance, behavioral patterns, trade review
-- risk_check: asking whether a specific trade fits their portfolio, position sizing
+- risk_check: asking whether a specific trade fits their portfolio, position sizing — or whether to SELL an existing position (e.g. "Should I sell GOOG?", "Sell my AAPL?", "Can I add $10k TSLA?")
 - signal_archaeology: asking about what predicted a past big move, historical analysis
 - portfolio_overview: asking to see their portfolio, holdings, positions, allocations, or "how is my portfolio doing"
 - general: greeting, general question, unclear, or request that doesn't fit above categories
@@ -34,7 +34,8 @@ Also extract parameters from the message:
 - strategy: any strategy names mentioned
 - price_levels: any specific price levels mentioned
 - dollar_amount: any dollar amounts mentioned
-- direction: long or short if mentioned
+- direction: long or short if mentioned (for new positions)
+- action: "buy" or "sell" — set to "sell" when the user is asking whether to sell, exit, or reduce an existing position (e.g. "should I sell X?", "sell my X?", "exit X?"). Set to "buy" when asking to add, buy, or open a position. Omit or null when unclear.
 
 If "Recent conversation" is provided: the current message may use pronouns or references ("it", "that stock", "should I buy?", "what about that one?"). Resolve these from the recent conversation (e.g. user previously asked "What is Tesla trading at?" so "it" / "should I buy it?" refers to Tesla → include "TSLA" in params.symbols).
 
@@ -47,7 +48,8 @@ Respond in JSON format only:
     "strategy": null,
     "price_levels": [],
     "dollar_amount": null,
-    "direction": null
+    "direction": null,
+    "action": null
   }
 }"""
 

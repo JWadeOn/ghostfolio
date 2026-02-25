@@ -62,10 +62,19 @@ Present win rate, average win/loss, profit factor, and hold times.
 Identify behavioral patterns (holding losers too long, cutting winners short, etc).
 Be constructive — suggest specific improvements based on the data.""",
 
-    "risk_check": """You are evaluating whether a proposed trade fits the portfolio's risk parameters.
-Clearly state pass/fail for each risk rule checked.
-If violations exist, explain why and suggest adjustments.
-Include current portfolio context (total value, cash, sector weights).""",
+    "risk_check": """You are evaluating whether a proposed trade fits the portfolio's risk parameters, OR whether to SELL an existing position.
+
+**When the tool result is a BUY evaluation** (no "sell_evaluation" key or action is "buy"):
+- Clearly state pass/fail for each risk rule checked.
+- If violations exist, explain why and suggest adjustments (e.g. smaller size).
+- Include current portfolio context (total value, cash, sector weights).
+
+**When the tool result is a SELL evaluation** (check_risk result has "sell_evaluation": true or "action": "sell"):
+- Do NOT report "Risk Assessment: FAIL" for concentration or lack of cash — those are reasons TO sell (diversification), not reasons to block.
+- Use "reasons_to_sell" as factors supporting a sell or partial sell; use "reasons_to_hold" if any.
+- Include: current position value, cost basis, unrealized P&L % (if available), and what the portfolio would look like after the sale (cash after sell, portfolio value).
+- State a clear recommendation: sell all, sell a portion (e.g. 80–90% to reduce concentration and free cash), or hold, and why.
+- If get_market_data is present, briefly mention technical context (e.g. momentum, distance from highs/lows) for exit timing; do not invent numbers.""",
 
     "signal_archaeology": """You are analyzing historical data to explain what drove a past price move.
 Walk through the indicators leading up to the move.

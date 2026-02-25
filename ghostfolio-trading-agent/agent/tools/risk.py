@@ -114,19 +114,135 @@ def _portfolio_level_risk(
     }
 
 
+def _evaluate_sell(
+    symbol: str,
+    total_value: float,
+    total_cash: float,
+    holdings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """
+    Evaluate whether to sell an existing position. Concentration and no cash
+    are reasons TO sell (diversification), not reasons to block. Return
+    passed=True when we recommend selling so synthesis does not report FAIL.
+    """
+    position = None
+    for h in holdings:
+        if (h.get("symbol") or "").upper() == symbol.upper():
+            position = h
+            break
+
+    if not position:
+        return {
+            "error": f"You do not hold {symbol}. Nothing to sell.",
+            "passed": False,
+            "sell_evaluation": True,
+            "symbol": symbol,
+        }
+
+    weight = position.get("weight", 0)
+    if (weight or 0) < 1:
+        weight = (weight or 0) * 100
+    value = position.get("value") or position.get("value_in_base_currency") or 0
+    cost_basis = position.get("investment", 0)
+    if cost_basis and cost_basis > 0:
+        unrealized_pnl_pct = round((value - cost_basis) / cost_basis * 100, 2)
+        unrealized_pnl_dollar = round(value - cost_basis, 2)
+    else:
+        unrealized_pnl_pct = None
+        unrealized_pnl_dollar = None
+
+    sector = _get_sector(symbol)
+    sector_weight = 0.0
+    for h in holdings:
+        s = _get_sector(h.get("symbol", ""))
+        if s and s == sector:
+            w = h.get("weight", 0) or 0
+            if w < 1:
+                w = w * 100
+            sector_weight += w
+
+    reasons_to_sell = []
+    reasons_to_hold = []
+
+    if weight > MAX_POSITION_PCT:
+        reasons_to_sell.append({
+            "rule": "position_concentration",
+            "message": f"{symbol} is {weight:.1f}% of portfolio (max {MAX_POSITION_PCT}% for single position)",
+            "current_weight": round(weight, 2),
+            "limit": MAX_POSITION_PCT,
+        })
+    if len(holdings) == 1:
+        reasons_to_sell.append({
+            "rule": "single_holding",
+            "message": "Portfolio is 100% in one position — no diversification",
+            "recommendation": "Selling a portion would free cash and allow diversification",
+        })
+    cash_pct = (total_cash / total_value * 100) if total_value > 0 else 0
+    if cash_pct < 5 and total_value > 0:
+        reasons_to_sell.append({
+            "rule": "no_cash_buffer",
+            "message": f"Cash is {cash_pct:.1f}% of portfolio",
+            "recommendation": "Selling part of this position would create a cash buffer for opportunities or rebalancing",
+        })
+    if sector_weight > MAX_SECTOR_PCT and sector:
+        reasons_to_sell.append({
+            "rule": "sector_concentration",
+            "message": f"Sector '{sector}' is {sector_weight:.1f}% of portfolio (max {MAX_SECTOR_PCT}%)",
+            "sector": sector,
+            "current": round(sector_weight, 2),
+            "limit": MAX_SECTOR_PCT,
+        })
+
+    recommend_sell = len(reasons_to_sell) > 0
+    cash_after_full_sell = round(total_cash + value, 2)
+    portfolio_after_sell_value = round(total_value - value, 2) if total_value else 0
+
+    return {
+        "passed": recommend_sell,
+        "symbol": symbol,
+        "sell_evaluation": True,
+        "action": "sell",
+        "position": {
+            "symbol": symbol,
+            "value": round(value, 2),
+            "cost_basis": round(cost_basis, 2) if cost_basis else None,
+            "weight_pct": round(weight, 2),
+            "unrealized_pnl_pct": unrealized_pnl_pct,
+            "unrealized_pnl_dollar": unrealized_pnl_dollar,
+            "sector": sector,
+        },
+        "reasons_to_sell": reasons_to_sell,
+        "reasons_to_hold": reasons_to_hold,
+        "recommend_sell": recommend_sell,
+        "portfolio_after_sell": {
+            "portfolio_value": portfolio_after_sell_value,
+            "cash_after_full_sell": cash_after_full_sell,
+        },
+        "portfolio_summary": {
+            "total_value": total_value,
+            "total_cash": total_cash,
+            "holding_count": len(holdings),
+            "cash_pct": round(cash_pct, 2),
+        },
+    }
+
+
 def check_risk(
     symbol: str | None = None,
     direction: str = "LONG",
+    action: str = "buy",
     position_size_pct: float | None = None,
     dollar_amount: float | None = None,
     client: GhostfolioClient | None = None,
 ) -> dict[str, Any]:
     """
     Check if a proposed trade fits portfolio risk parameters, or assess portfolio-level risk when no symbol is given.
+    When action='sell', evaluates whether to sell an existing position (concentration/cash = reasons TO sell).
 
     Args:
         symbol: Ticker symbol to trade; if None, runs portfolio-level risk assessment (concentration, cash, diversification).
         direction: "LONG" or "SHORT"
+        action: "buy" (default) or "sell" — sell uses sell-specific logic (reasons_to_sell, P&L, portfolio after sale).
         position_size_pct: Proposed position as % of portfolio (alternative to dollar_amount)
         dollar_amount: Proposed dollar amount (alternative to position_size_pct)
         client: Optional GhostfolioClient
@@ -143,6 +259,10 @@ def check_risk(
     total_value = portfolio.get("summary", {}).get("total_value", 0)
     total_cash = portfolio.get("summary", {}).get("total_cash", 0)
     holdings = portfolio.get("holdings", [])
+
+    # Sell evaluation: different logic — concentration/cash are reasons TO sell
+    if (action or "buy").lower() == "sell" and symbol:
+        return _evaluate_sell(symbol, total_value, total_cash, holdings)
 
     # Portfolio-level risk assessment when no symbol is provided
     if symbol is None or symbol == "":

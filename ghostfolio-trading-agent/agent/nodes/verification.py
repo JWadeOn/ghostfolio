@@ -160,11 +160,14 @@ def _check_guardrails(synthesis: str, intent: str, tool_results: dict) -> list[s
     """Check risk guardrails in the synthesis."""
     issues = []
 
-    # If response suggests a trade, must include stop loss and target
+    # If response suggests a trade (buy/enter), must include stop loss and target
     trade_keywords = ["buy", "enter", "long", "short", "position"]
     has_trade_suggestion = any(kw in synthesis.lower() for kw in trade_keywords)
+    # For sell evaluations, we recommend selling — not entering a trade — so skip stop/target requirement
+    risk_result = tool_results.get("check_risk", {})
+    is_sell_evaluation = risk_result.get("sell_evaluation") or risk_result.get("action") == "sell"
 
-    if has_trade_suggestion and intent in ("opportunity_scan", "risk_check", "chart_validation"):
+    if has_trade_suggestion and not is_sell_evaluation and intent in ("opportunity_scan", "risk_check", "chart_validation"):
         if "stop" not in synthesis.lower() and "stop loss" not in synthesis.lower():
             issues.append("Trade suggestion missing stop loss level")
         if "target" not in synthesis.lower() and "take profit" not in synthesis.lower():

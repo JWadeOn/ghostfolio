@@ -112,6 +112,7 @@ def check_context_node(state: AgentState) -> dict[str, Any]:
             if symbols:
                 tool_params["symbol"] = symbols[0]
                 tool_params["direction"] = params.get("direction", "LONG")
+                tool_params["action"] = params.get("action") or "buy"
                 if params.get("dollar_amount"):
                     tool_params["dollar_amount"] = params["dollar_amount"]
             # when no symbols, leave params empty → check_risk runs portfolio-level assessment

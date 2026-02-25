@@ -53,6 +53,12 @@ eval_cases = [
         "expected_tools": ["get_portfolio_snapshot", "check_risk"],
     },
     {
+        "input": "Should I sell GOOG?",
+        "expected_intent": "risk_check",
+        "expected_tools": ["get_portfolio_snapshot", "get_market_data", "check_risk"],
+        "expected_output_contains": ["position", "portfolio"],
+    },
+    {
         "input": "What predicted the AAPL crash last quarter?",
         "expected_intent": "signal_archaeology",
         "expected_tools": ["get_market_data"],

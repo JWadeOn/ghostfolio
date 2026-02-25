@@ -251,9 +251,11 @@ Targets tight consolidation near highs with declining volume — classic breakou
 | **detect_regime**          | Classifies the market across 5 dimensions using SPY, VIX, and 9 sector ETFs                                                               |
 | **scan_strategies**        | Runs all strategies against a symbol universe, filtered by current regime                                                                 |
 | **get_portfolio_snapshot** | Retrieves holdings, performance, and account data from Ghostfolio                                                                         |
-| **check_risk**             | Validates a proposed trade against position size, sector, correlation, exposure, and cash limits                                          |
+| **check_risk**             | Validates a proposed **buy** (position size, sector, correlation, cash). For **sell** questions, runs sell-specific logic: concentration and lack of cash are reasons *to* sell; returns position P&L, reasons_to_sell, and portfolio-after-sale. |
 | **get_trade_history**      | Pulls order history from Ghostfolio and computes P&L, win rate, and other aggregate stats                                                 |
 | **lookup_symbol**          | Searches Ghostfolio for symbols by name or ticker                                                                                         |
+
+**Risk check: buy vs sell** — Buy (e.g. "Can I add $10k TSLA?") uses pass/fail vs limits. Sell (e.g. "Should I sell GOOG?") treats concentration and no cash as reasons *to* sell; response includes unrealized P&L and portfolio impact, with no "FAIL" verdict for concentration. *MVP gap:* Tax implications and formal exit-timing rules are not yet modeled.
 
 ---
 
@@ -421,10 +423,10 @@ Confirm the second reply still uses data (e.g. mentions MSFT and/or AAPL with nu
 Hard gate. All items required to pass:
 
 - [x] Agent responds to natural language queries in your chosen domain
-- [ ] At least 3 functional tools the agent can invoke
-- [ ] Tool calls execute successfully and return structured results
-- [ ] Agent synthesizes tool results into coherent responses
-- [ ] Conversation history maintained across turns
+- [x] At least 3 functional tools the agent can invoke
+- [x] Tool calls execute successfully and return structured results
+- [x] Agent synthesizes tool results into coherent responses
+- [x] Conversation history maintained across turns
 - [ ] Basic error handling (graceful failure, not crashes)
 - [ ] At least one domain-specific verification check
 - [ ] Simple evaluation: 5+ test cases with expected outcomes
