@@ -93,7 +93,7 @@ def _build_intent_data(intent: str, tool_results: dict) -> dict:
             "aggregates": history.get("aggregates", {}),
             "recent_trades": history.get("trades", [])[:10],
         }
-    elif intent == "chart_validation":
+    elif intent in ("chart_validation", "price_quote"):
         md = tool_results.get("get_market_data", {})
         # Return latest data points for each symbol
         result = {}
@@ -101,6 +101,8 @@ def _build_intent_data(intent: str, tool_results: dict) -> dict:
             if isinstance(data, list) and data:
                 result[sym] = data[-1]  # latest record
         return result
+    elif intent == "portfolio_overview":
+        return tool_results.get("get_portfolio_snapshot", {})
     return {}
 
 

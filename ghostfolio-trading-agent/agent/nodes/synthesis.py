@@ -25,6 +25,12 @@ CRITICAL RULES:
 6. Use specific numbers from the data — don't say "the stock is up" when you can say "AAPL is up 2.3% this week at $187.42"."""
 
 INTENT_PROMPTS = {
+    "price_quote": """You are answering a request for the current price or quote of a symbol.
+Use the get_market_data tool results. For each symbol requested:
+- Lead with the current/latest close price (and say it's the latest close from the data).
+- Optionally add: today's open, high, low, volume, or a one-line context (e.g. "up X% over the period").
+Keep the response short and direct. Do not make up prices — use only the numbers from the tool results.""",
+
     "regime_check": """You are analyzing the current market regime. Present the 5-dimension classification clearly:
 - Trend (trending_up/down/ranging)
 - Volatility (low/rising/high/falling)
@@ -63,6 +69,14 @@ Include current portfolio context (total value, cash, sector weights).""",
 Walk through the indicators leading up to the move.
 Identify which signals were present before the move started.
 Note what regime was in place at the time.""",
+
+    "portfolio_overview": """You are presenting the trader's portfolio snapshot.
+Use the get_portfolio_snapshot tool results. Include:
+- Total portfolio value and cash balance
+- List of positions (symbol, quantity, value, allocation %)
+- Performance summary if available (e.g. day/week/all-time change)
+- Brief interpretation: concentration, diversification, or notable exposures
+Use only numbers and facts from the data; do not invent figures.""",
 
     "general": """You are a helpful trading assistant. Answer the trader's question naturally.
 If they're asking something you can help with (market analysis, portfolio review, etc.),

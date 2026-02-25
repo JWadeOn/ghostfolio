@@ -16,6 +16,9 @@ PORTFOLIO_TTL = timedelta(minutes=5)
 
 # Intent → required tools mapping
 INTENT_TOOLS = {
+    "price_quote": [
+        {"tool": "get_market_data", "always_fresh": True},
+    ],
     "regime_check": [
         {"tool": "detect_regime", "always_fresh": True},
     ],
@@ -37,6 +40,9 @@ INTENT_TOOLS = {
     ],
     "signal_archaeology": [
         {"tool": "get_market_data", "always_fresh": True},
+    ],
+    "portfolio_overview": [
+        {"tool": "get_portfolio_snapshot", "always_fresh": False},
     ],
     "general": [],
 }
@@ -83,7 +89,9 @@ def check_context_node(state: AgentState) -> dict[str, Any]:
         symbols = params.get("symbols", [])
         timeframe = params.get("timeframe")
 
-        if tool_name == "get_market_data" and symbols:
+        if tool_name == "get_market_data":
+            if not symbols:
+                continue  # get_market_data requires symbols; skip if none extracted
             tool_params["symbols"] = symbols
             if timeframe:
                 tool_params["period"] = timeframe

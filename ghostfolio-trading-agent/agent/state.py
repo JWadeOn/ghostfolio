@@ -11,8 +11,8 @@ class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
 
     # Intent classification result
-    intent: str  # "regime_check", "opportunity_scan", "chart_validation",
-                 # "journal_analysis", "risk_check", "signal_archaeology", "general"
+    intent: str  # "price_quote", "regime_check", "opportunity_scan", "chart_validation",
+                 # "journal_analysis", "risk_check", "signal_archaeology", "portfolio_overview", "general"
     extracted_params: dict  # symbols, timeframes, strategy names, etc.
 
     # Cached context

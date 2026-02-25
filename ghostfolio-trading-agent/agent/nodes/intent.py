@@ -17,12 +17,14 @@ logger = logging.getLogger(__name__)
 INTENT_SYSTEM_PROMPT = """You are the intent classifier for a trading intelligence agent.
 Given the trader's message, classify it into one of these categories:
 
+- price_quote: asking for current price, "trading at", "what's X at", quote, or last price for a symbol (e.g. "What's GOOG trading at?", "AAPL price?", "current price of MSFT")
 - regime_check: asking about current market conditions, regime, environment, macro outlook
 - opportunity_scan: asking to find setups, scan watchlist, find trades, screen stocks
 - chart_validation: asking about specific support/resistance levels, patterns, chart analysis for a symbol
 - journal_analysis: asking about their past trading performance, behavioral patterns, trade review
 - risk_check: asking whether a specific trade fits their portfolio, position sizing
 - signal_archaeology: asking about what predicted a past big move, historical analysis
+- portfolio_overview: asking to see their portfolio, holdings, positions, allocations, or "how is my portfolio doing"
 - general: greeting, general question, unclear, or request that doesn't fit above categories
 
 Also extract parameters from the message:
