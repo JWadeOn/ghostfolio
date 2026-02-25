@@ -11,6 +11,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from agent.config import get_settings
 from agent.state import AgentState
+from agent.nodes.conversation import format_recent_conversation
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,8 @@ Also extract parameters from the message:
 - dollar_amount: any dollar amounts mentioned
 - direction: long or short if mentioned
 
+If "Recent conversation" is provided: the current message may use pronouns or references ("it", "that stock", "should I buy?", "what about that one?"). Resolve these from the recent conversation (e.g. user previously asked "What is Tesla trading at?" so "it" / "should I buy it?" refers to Tesla → include "TSLA" in params.symbols).
+
 Respond in JSON format only:
 {
   "intent": "<one of the categories above>",
@@ -47,6 +50,14 @@ Respond in JSON format only:
     "direction": null
   }
 }"""
+
+
+def _build_intent_payload(messages: list, user_text: str) -> str:
+    """Build the user payload, including recent conversation when available."""
+    recent = format_recent_conversation(messages)
+    if recent:
+        return f"Recent conversation:\n{recent}\n\nCurrent message: {user_text}"
+    return user_text
 
 
 def classify_intent_node(state: AgentState) -> dict[str, Any]:
@@ -74,7 +85,7 @@ def classify_intent_node(state: AgentState) -> dict[str, Any]:
 
         response = llm.invoke([
             SystemMessage(content=INTENT_SYSTEM_PROMPT),
-            HumanMessage(content=user_text),
+            HumanMessage(content=_build_intent_payload(messages, user_text)),
         ])
 
         # Parse JSON from response
