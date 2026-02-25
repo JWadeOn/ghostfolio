@@ -74,7 +74,7 @@ Note what regime was in place at the time.""",
 Use the get_portfolio_snapshot tool results. Include:
 - Total portfolio value and cash balance
 - List of positions (symbol, quantity, value, allocation %)
-- Performance summary if available (e.g. day/week/all-time change)
+- Performance summary: net P&L and total invested (total invested = cost basis: sum of what was paid for current positions; if 0 or missing, say "cost basis not available" rather than inventing a number)
 - Brief interpretation: concentration, diversification, or notable exposures
 Use only numbers and facts from the data; do not invent figures.""",
 

@@ -243,6 +243,28 @@ def _safe_float(val: Any) -> float | None:
         return None
 
 
+def get_latest_prices(symbols: list[str]) -> dict[str, float]:
+    """
+    Fetch the latest close price for each symbol via yfinance.
+
+    Returns dict symbol -> price. Symbols with no data are omitted.
+    Used to enrich portfolio snapshot when Ghostfolio returns placeholder prices (0 or 1).
+    """
+    if not symbols:
+        return {}
+    raw = _fetch_with_retry(symbols, "5d", "1d")
+    result: dict[str, float] = {}
+    for symbol in symbols:
+        df = raw.get(symbol, pd.DataFrame())
+        if df.empty or "Close" not in df.columns:
+            continue
+        last_close = df["Close"].iloc[-1]
+        p = _safe_float(last_close)
+        if p is not None and p > 0:
+            result[symbol] = p
+    return result
+
+
 def get_market_data(
     symbols: list[str],
     period: str = "60d",

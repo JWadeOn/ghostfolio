@@ -6,8 +6,51 @@ import logging
 from typing import Any
 
 from agent.ghostfolio_client import GhostfolioClient
+from agent.tools.market_data import get_latest_prices
 
 logger = logging.getLogger(__name__)
+
+# Ghostfolio uses 1 as placeholder when market data is missing (see portfolio-calculator.ts)
+PLACEHOLDER_PRICES = (0, 1)
+
+
+def _cost_basis_from_activities(activities: list[dict]) -> dict[str, float]:
+    """
+    Compute cost basis per symbol from order/activity list (BUY/SELL only).
+    Uses proportional cost reduction on sells. Returns symbol -> cost_basis for current position.
+    """
+    by_symbol: dict[str, list[dict]] = {}
+    for a in activities:
+        sym = a.get("symbol") or (a.get("SymbolProfile") or {}).get("symbol") or ""
+        if not sym:
+            continue
+        t = (a.get("type") or "").upper()
+        if t not in ("BUY", "SELL"):
+            continue
+        by_symbol.setdefault(sym, []).append(a)
+
+    result: dict[str, float] = {}
+    for symbol, orders in by_symbol.items():
+        orders = sorted(orders, key=lambda o: o.get("date", ""))
+        qty = 0.0
+        cost_basis = 0.0
+        for o in orders:
+            order_qty = float(o.get("quantity") or 0)
+            unit_price = float(o.get("unitPrice") or 0)
+            if order_qty <= 0:
+                continue
+            if (o.get("type") or "").upper() == "BUY":
+                qty += order_qty
+                cost_basis += order_qty * unit_price
+            else:
+                if qty <= 0:
+                    continue
+                ratio = min(1.0, order_qty / qty)
+                cost_basis -= ratio * cost_basis
+                qty -= order_qty
+        if qty > 0 and cost_basis > 0:
+            result[symbol] = round(cost_basis, 2)
+    return result
 
 
 def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, Any]:
@@ -49,13 +92,19 @@ def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, 
         raw_holdings = []
 
     for h in raw_holdings:
+        qty = h.get("quantity", 0) or 0
+        market_price = h.get("marketPrice", 0) or 0
+        value_bc = h.get("valueInBaseCurrency")
+        value = value_bc if value_bc is not None else (h.get("value", 0) or h.get("marketValue", 0) or 0)
         holdings.append({
             "symbol": h.get("symbol", ""),
             "name": h.get("name", ""),
-            "quantity": h.get("quantity", 0),
+            "quantity": qty,
             "currency": h.get("currency", ""),
-            "market_price": h.get("marketPrice", 0),
-            "value": h.get("value", 0) or h.get("marketValue", 0),
+            "market_price": market_price,
+            "value": value,
+            "value_in_base_currency": value_bc,
+            "investment": h.get("investment", 0) or 0,  # cost basis for this position
             "weight": h.get("allocationInPercentage", 0),
             "performance_pct": h.get("netPerformancePercentage", 0),
             "performance_value": h.get("netPerformance", 0),
@@ -65,13 +114,34 @@ def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, 
             "sectors": h.get("sectors", []),
         })
 
-    # Parse performance
+    # Enrich with real prices when Ghostfolio returned placeholders (0 or 1)
+    symbols_to_fetch = [
+        ho["symbol"] for ho in holdings
+        if ho["symbol"] and (ho["market_price"] in PLACEHOLDER_PRICES or not ho["market_price"])
+    ]
+    if symbols_to_fetch:
+        try:
+            latest_prices = get_latest_prices(symbols_to_fetch)
+            for ho in holdings:
+                sym = ho["symbol"]
+                if sym not in latest_prices:
+                    continue
+                price = latest_prices[sym]
+                ho["market_price"] = price
+                qty = ho["quantity"] or 0
+                ho["value"] = round(qty * price, 2)
+                ho["value_in_base_currency"] = ho["value"]
+        except Exception as e:
+            logger.warning("Failed to enrich portfolio with latest prices: %s", e)
+
+    # Parse performance (v2 response: { chart, firstOrderDate, performance })
     perf = {}
     if isinstance(performance_data, dict):
-        chart = performance_data.get("chart", [])
         perf_data = performance_data.get("performance", performance_data)
+        # v2 uses currentValueInBaseCurrency; support both
+        current_val = perf_data.get("currentValueInBaseCurrency") or perf_data.get("currentValue") or perf_data.get("currentNetWorth")
         perf = {
-            "current_value": perf_data.get("currentValue", 0),
+            "current_value": current_val or 0,
             "net_performance": perf_data.get("netPerformance", 0),
             "net_performance_pct": perf_data.get("netPerformancePercentage", 0),
             "gross_performance": perf_data.get("grossPerformance", 0),
@@ -95,6 +165,38 @@ def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, 
         })
 
     total_value = perf.get("current_value", 0)
+    if total_value == 0 and holdings:
+        total_from_holdings = sum(
+            (h.get("value_in_base_currency") or h.get("value") or 0) for h in holdings
+        )
+        if total_from_holdings > 0:
+            total_value = total_from_holdings
+
+    # Total invested = cost basis (sum of what you paid). Prefer performance API, then sum from holdings, then compute from orders/activities.
+    total_invested = perf.get("total_investment", 0)
+    if total_invested == 0 and holdings:
+        total_invested = sum((h.get("investment") or 0) for h in holdings)
+
+    # If still 0, derive from Order table (activities) using unit price data
+    if total_invested == 0 and holdings:
+        try:
+            orders_data = client.get_orders()
+            if isinstance(orders_data, dict) and "error" in orders_data:
+                pass
+            else:
+                raw_activities = (
+                    orders_data.get("activities", []) if isinstance(orders_data, dict) else
+                    (orders_data if isinstance(orders_data, list) else [])
+                )
+                if raw_activities:
+                    cost_by_symbol = _cost_basis_from_activities(raw_activities)
+                    for ho in holdings:
+                        sym = ho.get("symbol")
+                        if sym and sym in cost_by_symbol:
+                            ho["investment"] = cost_by_symbol[sym]
+                    total_invested = sum(cost_by_symbol.get(h.get("symbol"), 0) for h in holdings)
+        except Exception as e:
+            logger.warning("Failed to compute cost basis from orders: %s", e)
 
     return {
         "holdings": holdings,
@@ -103,7 +205,7 @@ def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, 
         "summary": {
             "total_value": total_value,
             "total_cash": total_cash,
-            "total_invested": perf.get("total_investment", 0),
+            "total_invested": total_invested,
             "net_pnl": perf.get("net_performance", 0),
             "net_pnl_pct": perf.get("net_performance_pct", 0),
             "holding_count": len(holdings),
