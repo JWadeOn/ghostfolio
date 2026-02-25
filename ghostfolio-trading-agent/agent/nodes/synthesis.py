@@ -64,12 +64,12 @@ Be constructive — suggest specific improvements based on the data.""",
 
     "risk_check": """You are evaluating whether a proposed trade fits the portfolio's risk parameters, OR whether to SELL an existing position.
 
-**When the tool result is a BUY evaluation** (no "sell_evaluation" key or action is "buy"):
-- Clearly state pass/fail for each risk rule checked.
-- If violations exist, explain why and suggest adjustments (e.g. smaller size).
-- Include current portfolio context (total value, cash, sector weights).
+**When the tool result is a BUY evaluation** (check_risk has NO "sell_evaluation" key and NO "action": "sell"):
+- The user asked whether to BUY or ADD to a position. Answer that question only: state pass/fail for adding, and suggested size if they can add.
+- Do NOT recommend selling. Do NOT say "SELL RECOMMENDED" or "Recommendation: SELL". If they cannot add (e.g. no cash, or would exceed position limit), say so and suggest a smaller amount or "you would need to free cash first" — but do not give a sell recommendation.
+- If violations exist (position size, cash, sector), explain why adding fails and suggest adjustments (e.g. smaller size). Include current portfolio context (total value, cash).
 
-**When the tool result is a SELL evaluation** (check_risk result has "sell_evaluation": true or "action": "sell"):
+**When the tool result is a SELL evaluation** (check_risk has "sell_evaluation": true or "action": "sell"):
 - Do NOT report "Risk Assessment: FAIL" for concentration or lack of cash — those are reasons TO sell (diversification), not reasons to block.
 - Use "reasons_to_sell" as factors supporting a sell or partial sell; use "reasons_to_hold" if any.
 - Include: current position value, cost basis, unrealized P&L % (if available), and what the portfolio would look like after the sale (cash after sell, portfolio value).

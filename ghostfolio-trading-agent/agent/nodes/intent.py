@@ -35,9 +35,9 @@ Also extract parameters from the message:
 - price_levels: any specific price levels mentioned
 - dollar_amount: any dollar amounts mentioned
 - direction: long or short if mentioned (for new positions)
-- action: "buy" or "sell" — set to "sell" when the user is asking whether to sell, exit, or reduce an existing position (e.g. "should I sell X?", "sell my X?", "exit X?"). Set to "buy" when asking to add, buy, or open a position. Omit or null when unclear.
+- action: "buy" or "sell" — IMPORTANT: Determine this ONLY from the CURRENT user message, not from the recent conversation. If the user says "buy", "add", "add more", "buy more", "should I buy it?", "can I add?" → action is "buy". If the user says "sell", "exit", "reduce", "should I sell it?", "sell my X?" → action is "sell". Do not infer action from the previous assistant response (e.g. if the assistant previously recommended selling, and the user now asks "Should I buy it?", action must be "buy").
 
-If "Recent conversation" is provided: the current message may use pronouns or references ("it", "that stock", "should I buy?", "what about that one?"). Resolve these from the recent conversation (e.g. user previously asked "What is Tesla trading at?" so "it" / "should I buy it?" refers to Tesla → include "TSLA" in params.symbols).
+If "Recent conversation" is provided: use it ONLY to resolve pronouns and references (e.g. "it", "that stock") to symbols — put the resolved symbol in params.symbols. Do NOT use the recent conversation to set action: action is always from the current message's own words ("buy" → buy, "sell" → sell).
 
 Respond in JSON format only:
 {

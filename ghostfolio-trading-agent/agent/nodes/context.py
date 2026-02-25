@@ -109,10 +109,31 @@ def check_context_node(state: AgentState) -> dict[str, Any]:
             if symbols:
                 tool_params["symbol"] = symbols[0]
         elif tool_name == "check_risk":
+            symbols = list(symbols)  # copy so we can mutate for fallback
+            # Resolve symbols for risk_check when user said "buy" or "sell" but intent didn't resolve "it"
+            if not symbols and intent == "risk_check":
+                portfolio = state.get("portfolio")
+                if isinstance(portfolio, dict):
+                    holdings = portfolio.get("holdings", [])
+                    if len(holdings) == 1:
+                        sym = (holdings[0].get("symbol") or "").strip()
+                        if sym:
+                            symbols = [sym]
+                            logger.info("risk_check: resolved symbol from single holding: %s", sym)
             if symbols:
                 tool_params["symbol"] = symbols[0]
                 tool_params["direction"] = params.get("direction", "LONG")
-                tool_params["action"] = params.get("action") or "buy"
+                action = params.get("action") or "buy"
+                # Heuristic: current user message says "buy" (not "sell") → force buy evaluation
+                messages = state.get("messages", [])
+                if messages:
+                    last_content = getattr(messages[-1], "content", None) or ""
+                    last_lower = (last_content if isinstance(last_content, str) else str(last_content)).lower()
+                    if "buy" in last_lower and "sell" not in last_lower:
+                        action = "buy"
+                    elif "sell" in last_lower and "buy" not in last_lower:
+                        action = "sell"
+                tool_params["action"] = action
                 if params.get("dollar_amount"):
                     tool_params["dollar_amount"] = params["dollar_amount"]
             # when no symbols, leave params empty → check_risk runs portfolio-level assessment
