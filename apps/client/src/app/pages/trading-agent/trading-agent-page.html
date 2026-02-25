@@ -1,5 +1,5 @@
 <div class="d-flex flex-column h-100 overflow-hidden">
-  <div class="flex-grow-1 overflow-auto p-3" #messagesContainer>
+  <div #messagesContainer class="flex-grow-1 overflow-auto p-3">
     @if (messages.length === 0) {
       <p class="text-muted" i18n>
         Ask about market regime, scans, risk checks, or chart validation. For
@@ -13,7 +13,11 @@
         [class.bg-light]="msg.role === 'user'"
         [class.text-danger]="msg.error"
       >
-        <strong>{{ (msg.role === 'user' ? labelUser : labelAssistant) | uppercase }}:</strong>
+        <strong
+          >{{
+            (msg.role === 'user' ? labelUser : labelAssistant) | uppercase
+          }}:</strong
+        >
         <div class="mt-1">{{ msg.content }}</div>
       </div>
     }
@@ -25,14 +29,14 @@
     }
   </div>
   <div class="p-3 border-top bg-white">
-    <form (ngSubmit)="onSubmit()" class="d-flex gap-2 align-items-end">
-      <mat-form-field class="flex-grow-1" appearance="outline">
+    <form class="d-flex gap-2 align-items-end" (ngSubmit)="onSubmit()">
+      <mat-form-field appearance="outline" class="flex-grow-1">
         <mat-label i18n>Message</mat-label>
         <input
           matInput
-          [(ngModel)]="inputMessage"
           name="inputMessage"
           [disabled]="isLoading"
+          [(ngModel)]="inputMessage"
           (keydown.enter)="$event.preventDefault(); onSubmit()"
         />
       </mat-form-field>

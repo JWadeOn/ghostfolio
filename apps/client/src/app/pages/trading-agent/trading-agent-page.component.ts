@@ -1,7 +1,12 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  NgZone
+} from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -74,7 +79,7 @@ export class GfTradingAgentPageComponent {
           this.ngZone.run(() => {
             this.threadId = res.thread_id ?? this.threadId;
             const summary =
-              (res.response && typeof res.response.summary === 'string')
+              res.response && typeof res.response.summary === 'string'
                 ? res.response.summary
                 : $localize`No response generated.`;
             this.messages = [

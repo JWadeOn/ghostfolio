@@ -95,8 +95,10 @@
             i18n
             mat-flat-button
             [ngClass]="{
-              'font-weight-bold': currentRoute === internalRoutes.tradingAgent.path,
-              'text-decoration-underline': currentRoute === internalRoutes.tradingAgent.path
+              'font-weight-bold':
+                currentRoute === internalRoutes.tradingAgent.path,
+              'text-decoration-underline':
+                currentRoute === internalRoutes.tradingAgent.path
             }"
             [routerLink]="routerLinkTradingAgent"
             >Trading Assistant</a
@@ -321,7 +323,8 @@
               i18n
               mat-menu-item
               [ngClass]="{
-                'font-weight-bold': currentRoute === internalRoutes.tradingAgent.path
+                'font-weight-bold':
+                  currentRoute === internalRoutes.tradingAgent.path
               }"
               [routerLink]="routerLinkTradingAgent"
               >Trading Assistant</a
