@@ -30,6 +30,16 @@ def _parse_time_range(time_range: str) -> datetime | None:
     return None
 
 
+def _symbol_from_order(order: dict) -> str:
+    """Resolve symbol from order; API may put it in SymbolProfile/symbolProfile."""
+    sym = order.get("symbol") or ""
+    if not sym and isinstance(order.get("SymbolProfile"), dict):
+        sym = (order["SymbolProfile"] or {}).get("symbol") or ""
+    if not sym and isinstance(order.get("symbolProfile"), dict):
+        sym = (order.get("symbolProfile") or {}).get("symbol") or ""
+    return sym or "UNKNOWN"
+
+
 def _match_trades(orders: list[dict]) -> tuple[list[dict], list[dict]]:
     """
     Match BUY and SELL orders to create trade pairs.
@@ -38,7 +48,7 @@ def _match_trades(orders: list[dict]) -> tuple[list[dict], list[dict]]:
     # Group by symbol
     by_symbol: dict[str, list[dict]] = {}
     for order in orders:
-        sym = order.get("symbol", "UNKNOWN")
+        sym = _symbol_from_order(order)
         by_symbol.setdefault(sym, []).append(order)
 
     closed_trades = []
