@@ -97,15 +97,26 @@ class GhostfolioClient:
 
     # --- Portfolio ---
 
-    def get_holdings(self, range_: str = "max") -> Any:
-        return self._get("/api/v1/portfolio/holdings", params={"range": range_})
+    def get_holdings(self, range_: str = "max", accounts: str | None = None) -> Any:
+        params: dict[str, str] = {"range": range_}
+        if accounts:
+            params["accounts"] = accounts
+        return self._get("/api/v1/portfolio/holdings", params=params)
 
-    def get_performance(self, range_: str = "1d") -> Any:
-        # Ghostfolio exposes performance under API v2 only
-        return self._get("/api/v2/portfolio/performance", params={"range": range_})
+    def get_performance(self, range_: str = "1d", accounts: str | None = None) -> Any:
+        params: dict[str, str] = {"range": range_}
+        if accounts:
+            params["accounts"] = accounts
+        return self._get("/api/v2/portfolio/performance", params=params)
 
-    def get_portfolio_details(self, range_: str = "max") -> Any:
-        return self._get("/api/v1/portfolio/details", params={"range": range_})
+    def get_portfolio_details(self, range_: str = "max", accounts: str | None = None) -> Any:
+        params: dict[str, str] = {"range": range_}
+        if accounts:
+            params["accounts"] = accounts
+        return self._get("/api/v1/portfolio/details", params=params)
+
+    def get_account(self, account_id: str) -> Any:
+        return self._get(f"/api/v1/account/{account_id}")
 
     # --- Accounts ---
 

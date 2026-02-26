@@ -19,6 +19,7 @@ from agent.tools.risk import portfolio_guardrails_check, trade_guardrails_check,
 from agent.tools.history import get_trade_history
 from agent.tools.symbols import lookup_symbol
 from agent.tools.activities import create_activity
+from agent.tools.portfolio_analysis import portfolio_analysis
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ TOOL_REGISTRY = {
     "lookup_symbol": lookup_symbol,
     "create_activity": create_activity,
     "check_risk": check_risk,  # legacy — remove when all callers migrate
+    "portfolio_analysis": portfolio_analysis,
 }
 
 GHOSTFOLIO_TOOLS = frozenset({
@@ -43,6 +45,7 @@ GHOSTFOLIO_TOOLS = frozenset({
     "check_risk",
     "lookup_symbol",
     "create_activity",
+    "portfolio_analysis",
 })
 
 

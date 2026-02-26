@@ -15,6 +15,7 @@ from agent.tools.risk import trade_guardrails_check as _trade_guardrails_check
 from agent.tools.history import get_trade_history as _get_trade_history
 from agent.tools.symbols import lookup_symbol as _lookup_symbol
 from agent.tools.activities import create_activity as _create_activity
+from agent.tools.portfolio_analysis import portfolio_analysis as _portfolio_analysis
 
 
 @tool
@@ -180,6 +181,19 @@ def create_activity(
     )
 
 
+@tool
+def portfolio_analysis(account_id: Optional[str] = None) -> dict:
+    """Analyze portfolio holdings, allocation breakdown, and performance for a specific account or all accounts.
+
+    Use when the user asks for analysis of a specific account, allocation breakdown, or detailed per-account performance.
+    Omit account_id for the full portfolio. Get available account IDs from get_portfolio_snapshot → accounts[].id.
+
+    Args:
+        account_id: Ghostfolio account ID to scope the analysis to. Omit for full portfolio.
+    """
+    return _portfolio_analysis(account_id=account_id)
+
+
 ALL_TOOLS = [
     get_market_data,
     get_portfolio_snapshot,
@@ -190,6 +204,7 @@ ALL_TOOLS = [
     get_trade_history,
     lookup_symbol,
     create_activity,
+    portfolio_analysis,
 ]
 
 
