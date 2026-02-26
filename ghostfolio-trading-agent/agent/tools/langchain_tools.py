@@ -17,6 +17,7 @@ from agent.tools.symbols import lookup_symbol as _lookup_symbol
 from agent.tools.activities import create_activity as _create_activity
 from agent.tools.portfolio_analysis import portfolio_analysis as _portfolio_analysis
 from agent.tools.transaction_categorize import transaction_categorize as _transaction_categorize
+from agent.tools.tax_estimate import tax_estimate as _tax_estimate
 
 
 @tool
@@ -217,6 +218,22 @@ def transaction_categorize(
     )
 
 
+@tool
+def tax_estimate(
+    income: float,
+    deductions: float = 0,
+    filing_status: str = "single",
+) -> dict:
+    """Estimate US federal income tax from income and deductions. Informational only; not professional tax advice.
+
+    Args:
+        income: Gross income in USD.
+        deductions: Total deductions (standard or itemized, default 0).
+        filing_status: One of "single", "married_filing_jointly", "head_of_household".
+    """
+    return _tax_estimate(income=income, deductions=deductions, filing_status=filing_status)
+
+
 ALL_TOOLS = [
     get_market_data,
     get_portfolio_snapshot,
@@ -229,6 +246,7 @@ ALL_TOOLS = [
     create_activity,
     portfolio_analysis,
     transaction_categorize,
+    tax_estimate,
 ]
 
 

@@ -21,6 +21,7 @@ from agent.tools.symbols import lookup_symbol
 from agent.tools.activities import create_activity
 from agent.tools.portfolio_analysis import portfolio_analysis
 from agent.tools.transaction_categorize import transaction_categorize
+from agent.tools.tax_estimate import tax_estimate
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ TOOL_REGISTRY = {
     "check_risk": check_risk,  # legacy — remove when all callers migrate
     "portfolio_analysis": portfolio_analysis,
     "transaction_categorize": transaction_categorize,
+    "tax_estimate": tax_estimate,
 }
 
 GHOSTFOLIO_TOOLS = frozenset({
