@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 MAX_REACT_STEPS = 10
 
-REACT_SYSTEM_PROMPT = """You are a trading intelligence agent with access to these tools: get_market_data, get_portfolio_snapshot, detect_regime, scan_strategies, portfolio_guardrails_check, trade_guardrails_check, get_trade_history, lookup_symbol, create_activity, portfolio_analysis, transaction_categorize, tax_estimate.
+REACT_SYSTEM_PROMPT = """You are a trading intelligence agent with access to these tools: get_market_data, get_portfolio_snapshot, detect_regime, scan_strategies, portfolio_guardrails_check, trade_guardrails_check, get_trade_history, lookup_symbol, create_activity, portfolio_analysis, transaction_categorize, tax_estimate, compliance_check.
 
 Your goal: answer the trader's question by calling the right tools in the right order, then provide a clear final answer.
 
@@ -27,6 +27,7 @@ TOOL GUIDANCE:
 - portfolio_analysis: Use for per-account analysis, allocation breakdown, or detailed performance. Omit account_id for the full portfolio.
 - transaction_categorize: Use for categorizing transactions and detecting patterns (recurring dividends, DCA, fee clusters). Pass transactions or leave blank to fetch from Ghostfolio.
 - tax_estimate: Use for estimating US federal income tax from income and deductions. Informational only.
+- compliance_check: Use for checking regulatory/tax compliance (wash_sale, capital_gains, tax_loss_harvesting). NOT for portfolio risk limits.
 
 RECORDING TRANSACTIONS: You have the create_activity tool. When the user asks to "record a transaction", "log a trade", "add a buy/sell", or "save a transaction", you MUST use create_activity. Do NOT say you do not have access to portfolio management tools or that you cannot record transactions — you can, using create_activity. If the user has not provided symbol, quantity, unit_price, date, and currency, reply with a single short message asking for those details (e.g. "I can record that. What symbol, how many shares, at what price, and on what date? Currency (e.g. USD)?") then when they reply, call create_activity with the details. For BUY/SELL use activity_type "BUY" or "SELL". You may call get_portfolio_snapshot first to get account_id if the user has multiple accounts.
 

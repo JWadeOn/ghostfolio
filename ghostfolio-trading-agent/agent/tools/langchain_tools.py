@@ -18,6 +18,7 @@ from agent.tools.activities import create_activity as _create_activity
 from agent.tools.portfolio_analysis import portfolio_analysis as _portfolio_analysis
 from agent.tools.transaction_categorize import transaction_categorize as _transaction_categorize
 from agent.tools.tax_estimate import tax_estimate as _tax_estimate
+from agent.tools.compliance_check import compliance_check as _compliance_check
 
 
 @tool
@@ -234,6 +235,19 @@ def tax_estimate(
     return _tax_estimate(income=income, deductions=deductions, filing_status=filing_status)
 
 
+@tool
+def compliance_check(transaction: dict, regulations: list[str]) -> dict:
+    """Check a transaction against regulatory/tax regulations (e.g. wash_sale, capital_gains, tax_loss_harvesting).
+
+    For portfolio risk limits use portfolio_guardrails_check or trade_guardrails_check.
+
+    Args:
+        transaction: Order-like dict with type, symbol, quantity, unitPrice, date.
+        regulations: List of regulation IDs to check (e.g. ["wash_sale", "capital_gains", "tax_loss_harvesting"]).
+    """
+    return _compliance_check(transaction=transaction, regulations=regulations)
+
+
 ALL_TOOLS = [
     get_market_data,
     get_portfolio_snapshot,
@@ -247,6 +261,7 @@ ALL_TOOLS = [
     portfolio_analysis,
     transaction_categorize,
     tax_estimate,
+    compliance_check,
 ]
 
 

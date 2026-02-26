@@ -22,6 +22,7 @@ from agent.tools.activities import create_activity
 from agent.tools.portfolio_analysis import portfolio_analysis
 from agent.tools.transaction_categorize import transaction_categorize
 from agent.tools.tax_estimate import tax_estimate
+from agent.tools.compliance_check import compliance_check
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ TOOL_REGISTRY = {
     "portfolio_analysis": portfolio_analysis,
     "transaction_categorize": transaction_categorize,
     "tax_estimate": tax_estimate,
+    "compliance_check": compliance_check,
 }
 
 GHOSTFOLIO_TOOLS = frozenset({
@@ -51,6 +53,7 @@ GHOSTFOLIO_TOOLS = frozenset({
     "create_activity",
     "portfolio_analysis",
     "transaction_categorize",
+    "compliance_check",
 })
 
 
