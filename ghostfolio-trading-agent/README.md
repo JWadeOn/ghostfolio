@@ -13,6 +13,7 @@ An AI-powered trading intelligence agent built with [LangGraph](https://github.c
 - [API Endpoints](#api-endpoints)
 - [Configuration](#configuration)
 - [Running Tests](#running-tests)
+- [Evaluation System](#evaluation-system)
 
 ---
 
@@ -416,21 +417,84 @@ Without a valid token, requests to `/api/v1/portfolio/*` and `/api/v1/account` r
 pytest tests/ -v
 ```
 
-Tests cover market data fetching, regime detection, strategy scanning, and risk validation.
+Tests cover market data fetching, regime detection, strategy scanning, and risk validation. The eval suite is under `tests/eval/` and is not run by pytest by default (see [Evaluation System](#evaluation-system)).
 
-### Evaluation suite
+---
 
-Run the full eval dataset (12 cases across all intents) against the live agent:
+## Evaluation System
+
+The agent is evaluated with a **scored eval suite** that runs natural-language test cases through the full graph, checks intent, tool usage, content, and safety, and writes timestamped reports. Evals use **mocks by default** so you can run them without a live Ghostfolio instance or yfinance network calls.
+
+### What gets evaluated
+
+- **Intent** — Classified intent matches the expected category (e.g. `regime_check`, `risk_check`, `price_quote`).
+- **Tools** — Expected tools are called; with `exact_tools: true`, no extra tools are allowed (e.g. "What's AAPL trading at?" must call only `get_market_data`).
+- **Content** — The response summary contains required phrases (e.g. "portfolio", "recorded", "AAPL") and avoids forbidden ones (e.g. "guarantee").
+- **Safety** — No prohibited language; guardrails reflected in output.
+- **Confidence** — The agent's own confidence score (0–100) is included in the per-case result.
+
+Each case gets a **numeric score per dimension** and an **overall score** (weighted average). A case **passes** if overall ≥ 0.8 and there are no errors.
+
+### Dataset
+
+Eval cases live in **`tests/eval/dataset.py`** in a LangSmith-compatible format. The suite includes **19 cases** across categories:
+
+| Category             | Description / examples                                                  |
+| -------------------- | ----------------------------------------------------------------------- |
+| `regime_check`       | Market regime, VIX, sector rotation                                     |
+| `opportunity_scan`   | Watchlist scan, momentum setups                                         |
+| `risk_check`         | "Can I buy $10k TSLA?", "Should I sell GOOG?"                           |
+| `general`            | Greetings, guarantee refusals, disclaimers                              |
+| `chart_validation`   | Support/resistance validation                                           |
+| `journal_analysis`   | Trade performance, win rate                                             |
+| `signal_archaeology` | What predicted a past move                                              |
+| `portfolio_overview` | Show portfolio, holdings                                                |
+| `price_quote`        | "What's AAPL trading at?" (exact_tools: `get_market_data` only)         |
+| `lookup_symbol`      | "Ticker for Apple", "Look up Tesla" (exact_tools: `lookup_symbol` only) |
+| `create_activity`    | "Record a buy of 10 AAPL…", "Log a sell…"                               |
+
+To add or change cases, edit `tests/eval/dataset.py`. Each case can specify `expected_intent`, `expected_tools`, `expected_output_contains`, `should_contain`, `should_not_contain`, `exact_tools`, and `category`.
+
+### How to run evals
+
+From the **`ghostfolio-trading-agent`** directory:
 
 ```bash
-python tests/eval/run_evals.py
+python3 tests/eval/run_evals.py
 ```
 
-This validates intent classification accuracy, correct tool execution, output content, and guardrail enforcement.
+- **Mocks:** By default, Ghostfolio and yfinance are **mocked** (`tests/mocks/`). No real API or network calls are made; the agent still runs end-to-end with the LLM (Anthropic API key required).
+- **Live Ghostfolio / yfinance:** To run against real services, set:
+  ```bash
+  EVAL_USE_MOCKS=0 python3 tests/eval/run_evals.py
+  ```
+- **LangSmith:** If `LANGCHAIN_API_KEY` is set, the run is logged as an experiment (dataset `ghostfolio-trading-agent-evals`, experiment name `trading-agent-v1` by default). Set `EVAL_VERSION=2` (or another value) to change the version suffix.
+
+The script prints pass/fail per case, overall pass rate, and the path of the written report.
+
+### Reports and regression
+
+- **JSON report:** Each run writes **`reports/eval-results-{timestamp}.json`** (e.g. `eval-results-20260226T183143Z.json`). It includes:
+  - **Run metadata** — timestamp, total cases, pass threshold.
+  - **Aggregate** — total passed, pass rate %, average overall score, breakdown **by category**.
+  - **Per-case** — id, category, input snippet, passed, overall score, scores per dimension, latency, agent confidence, errors, tools called.
+  - **Regression** — if the pass rate dropped by more than 5% compared to the previous run, `regression_delta_pct` is set and a **REGRESSION WARNING** is printed to stdout.
+
+Historical reports are kept; each run creates a new timestamped file.
+
+### Mock layer
+
+When mocks are enabled (`EVAL_USE_MOCKS=1`, default):
+
+- **Ghostfolio** — `tests/mocks/ghostfolio_mock.py` and `ghostfolio_responses.py` provide fixed portfolio, accounts, orders, symbol lookup (e.g. Apple→AAPL, Tesla→TSLA), and a successful create-order response.
+- **Market data** — `tests/mocks/market_data_mock.py` provides synthetic OHLCV DataFrames for AAPL, TSLA, GOOG, SPY, VIX, etc., so regime and indicator logic run without calling yfinance.
+- **Risk sector** — Sector lookup is stubbed so `check_risk` does not call yfinance.
+
+This keeps evals fast and repeatable without external services.
 
 ### MVP requirements check (report + hook)
 
-After substantial changes, run the full MVP gate and generate a report:
+After substantial changes, run the full MVP gate (pytest + evals + optional API checks) and generate a report:
 
 ```bash
 # From ghostfolio-trading-agent directory
@@ -443,7 +507,7 @@ make mvp-check
 npm run mvp-check
 ```
 
-This runs pytest (unit + integration), the eval suite, and optional API/deployment checks; writes `reports/mvp-requirements-report.json` and `reports/mvp-requirements-report.md`; and exits 0 only if all 9 MVP requirements pass.
+This runs pytest (unit + integration), the **eval suite** (with mocks), and optional API/deployment checks; writes `reports/mvp-requirements-report.json` and `reports/mvp-requirements-report.md`; and exits 0 only if all 9 MVP requirements pass.
 
 - **Skip evals** (e.g. no API keys): `SKIP_EVALS=1 python3 scripts/run_mvp_requirements.py`
 - **API checks** run when `AGENT_URL` is set (default `http://localhost:8000`). Set `AGENT_URL=` to skip.
