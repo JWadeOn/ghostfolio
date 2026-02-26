@@ -23,7 +23,8 @@ export class TradingAgentService {
   ) {}
 
   public async chat(
-    body: TradingAgentChatRequest
+    body: TradingAgentChatRequest,
+    accessToken?: string
   ): Promise<TradingAgentChatResponse> {
     const baseUrl = this.configurationService.get('TRADING_AGENT_URL');
     if (!baseUrl?.trim()) {
@@ -38,14 +39,19 @@ export class TradingAgentService {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
 
+    const payload: Record<string, unknown> = {
+      message: body.message,
+      thread_id: body.thread_id ?? undefined
+    };
+    if (accessToken) {
+      payload.access_token = accessToken;
+    }
+
     try {
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: body.message,
-          thread_id: body.thread_id ?? undefined
-        }),
+        body: JSON.stringify(payload),
         signal: controller.signal
       });
 

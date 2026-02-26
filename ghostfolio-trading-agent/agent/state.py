@@ -20,6 +20,9 @@ class AgentState(TypedDict):
     portfolio: dict | None
     portfolio_timestamp: str | None
 
+    # Optional JWT/security token for Ghostfolio API calls (forwarded from request)
+    ghostfolio_access_token: str | None
+
     # Tool results for current query (accumulated across ReAct steps)
     tool_results: dict
     tools_called: list[str]

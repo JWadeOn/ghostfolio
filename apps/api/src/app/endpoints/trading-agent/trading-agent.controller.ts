@@ -2,8 +2,9 @@ import { HasPermission } from '@ghostfolio/api/decorators/has-permission.decorat
 import { HasPermissionGuard } from '@ghostfolio/api/guards/has-permission.guard';
 import { permissions } from '@ghostfolio/common/permissions';
 
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { Request } from 'express';
 
 import { TradingAgentChatDto } from './trading-agent-chat.dto';
 import {
@@ -21,8 +22,13 @@ export class TradingAgentController {
   @HasPermission(permissions.readAiPrompt)
   @UseGuards(AuthGuard('jwt'), HasPermissionGuard)
   public async chat(
-    @Body() body: TradingAgentChatDto
+    @Body() body: TradingAgentChatDto,
+    @Req() req: Request
   ): Promise<TradingAgentChatResponse> {
-    return this.tradingAgentService.chat(body);
+    const accessToken =
+      typeof req.headers['authorization'] === 'string'
+        ? req.headers['authorization'].replace(/^Bearer\s+/i, '').trim()
+        : undefined;
+    return this.tradingAgentService.chat(body, accessToken);
   }
 }

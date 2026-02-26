@@ -15,6 +15,7 @@ def _make_initial_state(message: str) -> dict:
         "regime_timestamp": None,
         "portfolio": None,
         "portfolio_timestamp": None,
+        "ghostfolio_access_token": None,
         "tool_results": {},
         "tools_called": [],
         "react_step": 0,

@@ -9,6 +9,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, ToolMessage
 
+from agent.ghostfolio_client import GhostfolioClient
 from agent.state import AgentState
 from agent.tools.market_data import get_market_data
 from agent.tools.portfolio import get_portfolio_snapshot
@@ -30,6 +31,14 @@ TOOL_REGISTRY = {
     "lookup_symbol": lookup_symbol,
 }
 
+# Tools that call Ghostfolio API; they accept an optional client (we pass one built from request token)
+GHOSTFOLIO_TOOLS = frozenset({
+    "get_portfolio_snapshot",
+    "get_trade_history",
+    "check_risk",
+    "lookup_symbol",
+})
+
 
 def execute_tools_node(state: AgentState) -> dict[str, Any]:
     """Execute tool_calls from the last AIMessage and return ToolMessages + updated state."""
@@ -42,6 +51,7 @@ def execute_tools_node(state: AgentState) -> dict[str, Any]:
     regime_timestamp = state.get("regime_timestamp")
     portfolio = state.get("portfolio")
     portfolio_timestamp = state.get("portfolio_timestamp")
+    ghostfolio_token = state.get("ghostfolio_access_token")
 
     if not messages:
         return {"react_step": react_step + 1}
@@ -50,59 +60,79 @@ def execute_tools_node(state: AgentState) -> dict[str, Any]:
     if not isinstance(last_msg, AIMessage) or not getattr(last_msg, "tool_calls", None):
         return {"react_step": react_step + 1}
 
+    # One client per request token for Ghostfolio tools (avoids re-exchanging token per tool)
+    ghostfolio_client = None
+    if ghostfolio_token and GHOSTFOLIO_TOOLS:
+        try:
+            ghostfolio_client = GhostfolioClient(access_token=ghostfolio_token)
+        except Exception as e:
+            logger.warning("Failed to create Ghostfolio client from request token: %s", e)
+
     new_messages = []
 
-    for tc in last_msg.tool_calls:
-        tool_name = tc["name"]
-        tool_args = dict(tc.get("args", {}))
-        tool_call_id = tc["id"]
+    try:
+        for tc in last_msg.tool_calls:
+            tool_name = tc["name"]
+            tool_args = dict(tc.get("args", {}))
+            tool_call_id = tc["id"]
 
-        tool_fn = TOOL_REGISTRY.get(tool_name)
-        if not tool_fn:
-            logger.error("Unknown tool: %s", tool_name)
-            result = {"error": f"Unknown tool: {tool_name}"}
-            tool_results[tool_name] = result
-            new_messages.append(
-                ToolMessage(content=json.dumps(result, default=str), tool_call_id=tool_call_id)
-            )
-            continue
+            tool_fn = TOOL_REGISTRY.get(tool_name)
+            if not tool_fn:
+                logger.error("Unknown tool: %s", tool_name)
+                result = {"error": f"Unknown tool: {tool_name}"}
+                tool_results[tool_name] = result
+                new_messages.append(
+                    ToolMessage(content=json.dumps(result, default=str), tool_call_id=tool_call_id)
+                )
+                continue
 
-        # Inject regime from state into scan_strategies when the LLM didn't provide it
-        if tool_name == "scan_strategies" and "regime" not in tool_args and regime:
-            tool_args["regime"] = regime
+            # Inject regime from state into scan_strategies when the LLM didn't provide it
+            if tool_name == "scan_strategies" and "regime" not in tool_args and regime:
+                tool_args["regime"] = regime
 
-        try:
-            logger.info("Executing tool: %s with args: %s", tool_name, tool_args)
-            result = tool_fn(**tool_args)
+            # Use request-scoped Ghostfolio client for tools that need it
+            if tool_name in GHOSTFOLIO_TOOLS and ghostfolio_client is not None:
+                tool_args["client"] = ghostfolio_client
 
-            # Accumulate tool results (keyed by tool name; latest call wins if called twice)
-            tool_results[tool_name] = result
-            tools_called.append(tool_name)
+            try:
+                logger.info("Executing tool: %s with args: %s", tool_name, tool_args)
+                result = tool_fn(**tool_args)
 
-            now = datetime.now(timezone.utc).isoformat()
-            if tool_name == "detect_regime":
-                regime = result
-                regime_timestamp = now
-            elif tool_name == "get_portfolio_snapshot":
-                portfolio = result
-                portfolio_timestamp = now
+                # Accumulate tool results (keyed by tool name; latest call wins if called twice)
+                tool_results[tool_name] = result
+                tools_called.append(tool_name)
 
-            result_str = json.dumps(result, default=str)
-            if len(result_str) > 8000:
-                result_str = result_str[:8000] + "... (truncated)"
+                now = datetime.now(timezone.utc).isoformat()
+                if tool_name == "detect_regime":
+                    regime = result
+                    regime_timestamp = now
+                elif tool_name == "get_portfolio_snapshot":
+                    portfolio = result
+                    portfolio_timestamp = now
 
-            new_messages.append(
-                ToolMessage(content=result_str, tool_call_id=tool_call_id)
-            )
+                result_str = json.dumps(result, default=str)
+                if len(result_str) > 8000:
+                    result_str = result_str[:8000] + "... (truncated)"
 
-        except Exception as e:
-            logger.error("Tool %s failed: %s", tool_name, e)
-            error_result = {"error": str(e)}
-            tool_results[tool_name] = error_result
-            tools_called.append(tool_name)
-            new_messages.append(
-                ToolMessage(content=json.dumps(error_result), tool_call_id=tool_call_id)
-            )
+                new_messages.append(
+                    ToolMessage(content=result_str, tool_call_id=tool_call_id)
+                )
+
+            except Exception as e:
+                logger.error("Tool %s failed: %s", tool_name, e)
+                error_result = {"error": str(e)}
+                tool_results[tool_name] = error_result
+                tools_called.append(tool_name)
+                new_messages.append(
+                    ToolMessage(content=json.dumps(error_result), tool_call_id=tool_call_id)
+                )
+
+    finally:
+        if ghostfolio_client is not None:
+            try:
+                ghostfolio_client.close()
+            except Exception:
+                pass
 
     return {
         "messages": new_messages,

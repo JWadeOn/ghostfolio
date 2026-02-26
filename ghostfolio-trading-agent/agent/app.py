@@ -55,6 +55,7 @@ _thread_states: dict[str, dict] = {}
 class ChatRequest(BaseModel):
     message: str
     thread_id: str | None = None
+    access_token: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -96,6 +97,7 @@ async def chat(request: ChatRequest):
         "regime_timestamp": prev_state.get("regime_timestamp"),
         "portfolio": prev_state.get("portfolio"),
         "portfolio_timestamp": prev_state.get("portfolio_timestamp"),
+        "ghostfolio_access_token": (request.access_token or "").strip() or None,
         "tool_results": {},
         "tools_called": [],
         "react_step": 0,
