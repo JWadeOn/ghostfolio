@@ -18,7 +18,13 @@
             (msg.role === 'user' ? labelUser : labelAssistant) | uppercase
           }}:</strong
         >
-        <div class="mt-1">{{ msg.content }}</div>
+        @if (msg.role === 'assistant') {
+          <div class="mt-1 markdown-content">
+            <markdown [data]="msg.content"></markdown>
+          </div>
+        } @else {
+          <div class="mt-1">{{ msg.content }}</div>
+        }
       </div>
     }
     @if (isLoading) {

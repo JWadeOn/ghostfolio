@@ -11,6 +11,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MarkdownModule } from 'ngx-markdown';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -34,6 +35,7 @@ interface ChatApiResponse {
   imports: [
     CommonModule,
     FormsModule,
+    MarkdownModule,
     MatButtonModule,
     MatFormFieldModule,
     MatInputModule,
