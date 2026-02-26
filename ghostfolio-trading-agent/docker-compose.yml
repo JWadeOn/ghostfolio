@@ -64,7 +64,8 @@ services:
   trading-agent:
     build: .
     environment:
-      GHOSTFOLIO_API_URL: ${GHOSTFOLIO_API_URL:-http://ghostfolio:3333}
+      # GHOSTFOLIO_API_URL: ${GHOSTFOLIO_API_URL:-http://ghostfolio:3333}
+      GHOSTFOLIO_API_URL: http://host.docker.internal:3333
       GHOSTFOLIO_ACCESS_TOKEN: ${GHOSTFOLIO_ACCESS_TOKEN}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       LANGCHAIN_TRACING_V2: 'true'

@@ -7,13 +7,12 @@ from langgraph.graph.message import add_messages
 
 
 class AgentState(TypedDict):
-    # Conversation
+    # Conversation (HumanMessage, AIMessage with tool_calls, ToolMessage)
     messages: Annotated[list, add_messages]
 
-    # Intent classification result
-    intent: str  # "price_quote", "regime_check", "opportunity_scan", "chart_validation",
-                 # "journal_analysis", "risk_check", "signal_archaeology", "portfolio_overview", "general"
-    extracted_params: dict  # symbols, timeframes, strategy names, etc.
+    # Intent classification result (used for formatting and analytics, not tool routing)
+    intent: str
+    extracted_params: dict
 
     # Cached context
     regime: dict | None
@@ -21,10 +20,12 @@ class AgentState(TypedDict):
     portfolio: dict | None
     portfolio_timestamp: str | None
 
-    # Tool results for current query
-    tool_results: dict          # keyed by tool name -> result
-    tools_called: list[str]     # ordered list of tools invoked this turn
-    tools_needed: list[dict]    # tools to execute and their params
+    # Tool results for current query (accumulated across ReAct steps)
+    tool_results: dict
+    tools_called: list[str]
+
+    # ReAct loop control
+    react_step: int
 
     # Synthesis and verification
     synthesis: str | None

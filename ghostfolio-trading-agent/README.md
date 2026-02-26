@@ -63,6 +63,8 @@ This **builds Ghostfolio from source** (including the Trading Assistant UI), bui
 
 Postgres and Redis start first and are health-checked; then Ghostfolio (migrate + seed + server); then the trading agent. The agent talks to Ghostfolio at `http://ghostfolio:3333` on the Docker network.
 
+**Development:** To run the Ghostfolio client and API locally (with HMR) and keep Postgres, Redis, and the agent in Docker, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
 **First-time build:** Building Ghostfolio from source can take several minutes.
 
 **Start only the agent** (e.g. with Ghostfolio already running elsewhere):

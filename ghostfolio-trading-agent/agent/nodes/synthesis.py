@@ -152,11 +152,13 @@ def synthesize_node(state: AgentState) -> dict[str, Any]:
             system += f"- {issue}\n"
         system += "\nPlease regenerate your response using only the data provided. Fix the issues listed above."
 
-    # Get user message and optional recent conversation (for "it" / "that stock" resolution)
+    # Get the last HumanMessage (not the last message, which may be AIMessage/ToolMessage from ReAct)
     user_text = ""
     if messages:
-        last = messages[-1]
-        user_text = last.content if hasattr(last, "content") else str(last)
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                user_text = msg.content if hasattr(msg, "content") else str(msg)
+                break
     recent_conv = format_recent_conversation(messages)
     if recent_conv:
         user_block = f"Recent conversation:\n{recent_conv}\n\nTrader's question: {user_text}"

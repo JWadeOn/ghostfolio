@@ -1,79 +1,86 @@
-"""Unit tests for context node — tool selection and param building."""
+"""Unit tests for passive check_context node."""
 
-from langchain_core.messages import AIMessage, HumanMessage
+from datetime import datetime, timezone, timedelta
 
-from agent.nodes.context import check_context_node
+from agent.nodes.context import check_context_node, REGIME_TTL, PORTFOLIO_TTL
 
 
-def test_risk_check_action_buy_from_current_message():
-    """When the current user message says 'buy' (not 'sell'), check_risk gets action=buy even if params say sell."""
+def _fresh_ts() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _stale_ts(ttl: timedelta) -> str:
+    return (datetime.now(timezone.utc) - ttl - timedelta(minutes=1)).isoformat()
+
+
+def test_fresh_regime_is_preloaded():
+    regime = {"composite": "bullish_expansion", "confidence": 75}
     state = {
-        "intent": "risk_check",
-        "extracted_params": {
-            "symbols": ["GOOG"],
-            "action": "sell",  # e.g. LLM confused by previous sell discussion
-        },
-        "messages": [
-            HumanMessage(content="should I sell GOOG?"),
-            AIMessage(content="Recommendation: SELL 80-90%..."),
-            HumanMessage(content="Should I buy it?"),
-        ],
+        "regime": regime,
+        "regime_timestamp": _fresh_ts(),
+        "portfolio": None,
+        "portfolio_timestamp": None,
     }
     result = check_context_node(state)
-    tools_needed = result["tools_needed"]
-    check_risk_spec = next((t for t in tools_needed if t["tool"] == "check_risk"), None)
-    assert check_risk_spec is not None
-    assert check_risk_spec["params"].get("action") == "buy"
+    assert result["regime"] == regime
+    assert result["regime_timestamp"] is not None
 
 
-def test_risk_check_action_sell_when_user_says_sell():
-    """When the current user message says 'sell', check_risk gets action=sell."""
+def test_stale_regime_is_cleared():
     state = {
-        "intent": "risk_check",
-        "extracted_params": {"symbols": ["GOOG"], "action": "buy"},
-        "messages": [
-            HumanMessage(content="Should I sell GOOG?"),
-        ],
+        "regime": {"composite": "old"},
+        "regime_timestamp": _stale_ts(REGIME_TTL),
+        "portfolio": None,
+        "portfolio_timestamp": None,
     }
     result = check_context_node(state)
-    tools_needed = result["tools_needed"]
-    check_risk_spec = next((t for t in tools_needed if t["tool"] == "check_risk"), None)
-    assert check_risk_spec is not None
-    assert check_risk_spec["params"].get("action") == "sell"
+    assert result["regime"] is None
+    assert result["regime_timestamp"] is None
 
 
-def test_risk_check_action_from_params_when_message_ambiguous():
-    """When message has neither 'buy' nor 'sell', use params.action or default buy."""
+def test_missing_regime_stays_none():
     state = {
-        "intent": "risk_check",
-        "extracted_params": {"symbols": ["GOOG"], "action": "sell"},
-        "messages": [HumanMessage(content="What about GOOG?")],
+        "regime": None,
+        "regime_timestamp": None,
+        "portfolio": None,
+        "portfolio_timestamp": None,
     }
     result = check_context_node(state)
-    tools_needed = result["tools_needed"]
-    check_risk_spec = next((t for t in tools_needed if t["tool"] == "check_risk"), None)
-    assert check_risk_spec is not None
-    assert check_risk_spec["params"].get("action") == "sell"
+    assert result["regime"] is None
 
 
-def test_risk_check_resolves_symbol_from_single_holding_when_user_says_buy():
-    """When user says 'buy' but intent didn't resolve symbols, use single holding as 'it' and force action=buy."""
+def test_fresh_portfolio_is_preloaded():
+    portfolio = {"summary": {"total_value": 100000}}
     state = {
-        "intent": "risk_check",
-        "extracted_params": {"symbols": [], "action": "sell"},
-        "messages": [
-            HumanMessage(content="should I sell GOOG?"),
-            AIMessage(content="SELL 80-90%..."),
-            HumanMessage(content="should i buy it?"),
-        ],
-        "portfolio": {
-            "holdings": [{"symbol": "GOOG", "weight": 100}],
-            "summary": {"total_value": 155460, "total_cash": 0},
-        },
+        "regime": None,
+        "regime_timestamp": None,
+        "portfolio": portfolio,
+        "portfolio_timestamp": _fresh_ts(),
     }
     result = check_context_node(state)
-    tools_needed = result["tools_needed"]
-    check_risk_spec = next((t for t in tools_needed if t["tool"] == "check_risk"), None)
-    assert check_risk_spec is not None
-    assert check_risk_spec["params"].get("symbol") == "GOOG"
-    assert check_risk_spec["params"].get("action") == "buy"
+    assert result["portfolio"] == portfolio
+    assert result["portfolio_timestamp"] is not None
+
+
+def test_stale_portfolio_is_cleared():
+    state = {
+        "regime": None,
+        "regime_timestamp": None,
+        "portfolio": {"summary": {"total_value": 100000}},
+        "portfolio_timestamp": _stale_ts(PORTFOLIO_TTL),
+    }
+    result = check_context_node(state)
+    assert result["portfolio"] is None
+    assert result["portfolio_timestamp"] is None
+
+
+def test_no_routing_or_tools_needed_in_result():
+    """Passive context never sets tools_needed or returns routing info."""
+    state = {
+        "regime": {"composite": "bullish_expansion"},
+        "regime_timestamp": _fresh_ts(),
+        "portfolio": {"summary": {"total_value": 100000}},
+        "portfolio_timestamp": _fresh_ts(),
+    }
+    result = check_context_node(state)
+    assert "tools_needed" not in result

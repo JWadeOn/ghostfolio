@@ -32,7 +32,7 @@ def run_single_eval(case: dict, agent_graph: Any) -> dict:
         "portfolio_timestamp": None,
         "tool_results": {},
         "tools_called": [],
-        "tools_needed": [],
+        "react_step": 0,
         "synthesis": None,
         "verification_result": None,
         "verification_attempts": 0,

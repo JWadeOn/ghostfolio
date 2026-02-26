@@ -98,7 +98,7 @@ async def chat(request: ChatRequest):
         "portfolio_timestamp": prev_state.get("portfolio_timestamp"),
         "tool_results": {},
         "tools_called": [],
-        "tools_needed": [],
+        "react_step": 0,
         "synthesis": None,
         "verification_result": None,
         "verification_attempts": 0,

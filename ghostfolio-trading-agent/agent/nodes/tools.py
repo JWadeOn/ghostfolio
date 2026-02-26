@@ -1,10 +1,13 @@
-"""Node 3: Tool execution router — deterministic code, no LLM."""
+"""Node: Tool execution for ReAct loop — reads tool_calls from the last AIMessage."""
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
+
+from langchain_core.messages import AIMessage, ToolMessage
 
 from agent.state import AgentState
 from agent.tools.market_data import get_market_data
@@ -17,7 +20,6 @@ from agent.tools.symbols import lookup_symbol
 
 logger = logging.getLogger(__name__)
 
-# Tool function registry
 TOOL_REGISTRY = {
     "get_market_data": get_market_data,
     "get_portfolio_snapshot": get_portfolio_snapshot,
@@ -30,49 +32,53 @@ TOOL_REGISTRY = {
 
 
 def execute_tools_node(state: AgentState) -> dict[str, Any]:
-    """Execute the tools specified by the context node."""
-    tools_needed = state.get("tools_needed", [])
+    """Execute tool_calls from the last AIMessage and return ToolMessages + updated state."""
+    messages = state.get("messages", [])
     tool_results = dict(state.get("tool_results", {}))
     tools_called = list(state.get("tools_called", []))
+    react_step = state.get("react_step", 0)
 
-    # Track regime and portfolio updates
     regime = state.get("regime")
     regime_timestamp = state.get("regime_timestamp")
     portfolio = state.get("portfolio")
     portfolio_timestamp = state.get("portfolio_timestamp")
 
-    for tool_spec in tools_needed:
-        tool_name = tool_spec["tool"]
-        params = dict(tool_spec.get("params", {}))
+    if not messages:
+        return {"react_step": react_step + 1}
 
-        # Resolve symbols from portfolio for risk_check when user didn't mention symbols
-        if tool_name == "get_market_data" and (params.get("from_portfolio") or not params.get("symbols")):
-            portfolio_for_symbols = portfolio or state.get("portfolio")
-            if isinstance(portfolio_for_symbols, dict):
-                symbols_from_holdings = [
-                    h["symbol"] for h in portfolio_for_symbols.get("holdings", [])
-                    if h.get("symbol")
-                ]
-                if symbols_from_holdings:
-                    params["symbols"] = symbols_from_holdings
-            params.pop("from_portfolio", None)
-            if not params.get("symbols"):
-                logger.info("Skipping get_market_data: no symbols from portfolio")
-                continue
+    last_msg = messages[-1]
+    if not isinstance(last_msg, AIMessage) or not getattr(last_msg, "tool_calls", None):
+        return {"react_step": react_step + 1}
+
+    new_messages = []
+
+    for tc in last_msg.tool_calls:
+        tool_name = tc["name"]
+        tool_args = dict(tc.get("args", {}))
+        tool_call_id = tc["id"]
 
         tool_fn = TOOL_REGISTRY.get(tool_name)
         if not tool_fn:
-            logger.error(f"Unknown tool: {tool_name}")
-            tool_results[tool_name] = {"error": f"Unknown tool: {tool_name}"}
+            logger.error("Unknown tool: %s", tool_name)
+            result = {"error": f"Unknown tool: {tool_name}"}
+            tool_results[tool_name] = result
+            new_messages.append(
+                ToolMessage(content=json.dumps(result, default=str), tool_call_id=tool_call_id)
+            )
             continue
 
+        # Inject regime from state into scan_strategies when the LLM didn't provide it
+        if tool_name == "scan_strategies" and "regime" not in tool_args and regime:
+            tool_args["regime"] = regime
+
         try:
-            logger.info(f"Executing tool: {tool_name} with params: {params}")
-            result = tool_fn(**params)
+            logger.info("Executing tool: %s with args: %s", tool_name, tool_args)
+            result = tool_fn(**tool_args)
+
+            # Accumulate tool results (keyed by tool name; latest call wins if called twice)
             tool_results[tool_name] = result
             tools_called.append(tool_name)
 
-            # Cache regime and portfolio results
             now = datetime.now(timezone.utc).isoformat()
             if tool_name == "detect_regime":
                 regime = result
@@ -81,21 +87,28 @@ def execute_tools_node(state: AgentState) -> dict[str, Any]:
                 portfolio = result
                 portfolio_timestamp = now
 
-            # Pass regime to scanner if available
-            if tool_name == "detect_regime" and "scan_strategies" in [t["tool"] for t in tools_needed]:
-                # Update scan params with regime
-                for t in tools_needed:
-                    if t["tool"] == "scan_strategies":
-                        t["params"]["regime"] = result
+            result_str = json.dumps(result, default=str)
+            if len(result_str) > 8000:
+                result_str = result_str[:8000] + "... (truncated)"
+
+            new_messages.append(
+                ToolMessage(content=result_str, tool_call_id=tool_call_id)
+            )
 
         except Exception as e:
-            logger.error(f"Tool {tool_name} failed: {e}")
-            tool_results[tool_name] = {"error": str(e)}
+            logger.error("Tool %s failed: %s", tool_name, e)
+            error_result = {"error": str(e)}
+            tool_results[tool_name] = error_result
             tools_called.append(tool_name)
+            new_messages.append(
+                ToolMessage(content=json.dumps(error_result), tool_call_id=tool_call_id)
+            )
 
     return {
+        "messages": new_messages,
         "tool_results": tool_results,
         "tools_called": tools_called,
+        "react_step": react_step + 1,
         "regime": regime,
         "regime_timestamp": regime_timestamp,
         "portfolio": portfolio,
