@@ -16,6 +16,7 @@ from agent.tools.history import get_trade_history as _get_trade_history
 from agent.tools.symbols import lookup_symbol as _lookup_symbol
 from agent.tools.activities import create_activity as _create_activity
 from agent.tools.portfolio_analysis import portfolio_analysis as _portfolio_analysis
+from agent.tools.transaction_categorize import transaction_categorize as _transaction_categorize
 
 
 @tool
@@ -194,6 +195,28 @@ def portfolio_analysis(account_id: Optional[str] = None) -> dict:
     return _portfolio_analysis(account_id=account_id)
 
 
+@tool
+def transaction_categorize(
+    transactions: Optional[list] = None,
+    time_range: Optional[str] = "1y",
+    account_id: Optional[str] = None,
+) -> dict:
+    """Categorize transactions by type and tags; detect patterns (recurring dividends, DCA, fee clusters).
+
+    Pass transactions from trade history, or leave blank to fetch from Ghostfolio.
+
+    Args:
+        transactions: Pre-fetched list of transactions. If omitted, fetches from Ghostfolio.
+        time_range: Lookback period when fetching (e.g. "1y", "90d", "6m").
+        account_id: Optional account filter when fetching.
+    """
+    return _transaction_categorize(
+        transactions=transactions,
+        time_range=time_range,
+        account_id=account_id,
+    )
+
+
 ALL_TOOLS = [
     get_market_data,
     get_portfolio_snapshot,
@@ -205,6 +228,7 @@ ALL_TOOLS = [
     lookup_symbol,
     create_activity,
     portfolio_analysis,
+    transaction_categorize,
 ]
 
 
