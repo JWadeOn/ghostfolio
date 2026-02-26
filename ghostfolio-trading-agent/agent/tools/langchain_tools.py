@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from langchain_core.tools import tool
 
@@ -13,6 +13,7 @@ from agent.tools.scanner import scan_strategies as _scan_strategies
 from agent.tools.risk import check_risk as _check_risk
 from agent.tools.history import get_trade_history as _get_trade_history
 from agent.tools.symbols import lookup_symbol as _lookup_symbol
+from agent.tools.activities import create_activity as _create_activity
 
 
 @tool
@@ -126,6 +127,51 @@ def lookup_symbol(query: str) -> dict:
     return _lookup_symbol(query=query)
 
 
+@tool
+def create_activity(
+    activity_type: str,
+    symbol: str,
+    quantity: float,
+    unit_price: float,
+    currency: str,
+    date: str,
+    account_id: Optional[str] = None,
+    fee: float = 0,
+    data_source: Optional[str] = None,
+    comment: Optional[str] = None,
+    **kwargs: Any,
+) -> dict:
+    """Record a transaction or portfolio activity in Ghostfolio (buy, sell, dividend, fee, etc.).
+
+    You HAVE this tool. Use it when the user asks to record a transaction, log a trade, add a buy/sell, record an activity, or save a transaction to their portfolio. If the user does not give all details (symbol, quantity, price, date, currency), ask for the missing details first, then call this tool. For BUY/SELL use activity_type "BUY" or "SELL". For recording a trade you may first run check_risk and optionally get_portfolio_snapshot to get account_id when the user has multiple accounts.
+
+    Args:
+        activity_type: One of BUY, SELL, DIVIDEND, FEE, INTEREST, LIABILITY.
+        symbol: Ticker symbol (e.g. "AAPL").
+        quantity: Number of shares/units (must be > 0 for BUY/SELL).
+        unit_price: Price per unit (>= 0).
+        currency: Currency code (e.g. "USD").
+        date: Trade date as ISO8601 (e.g. "2025-02-26" or "2025-02-26T12:00:00Z").
+        account_id: Optional; use when user has multiple accounts (from get_portfolio_snapshot).
+        fee: Fee/commission (default 0).
+        data_source: Optional; for stocks use "YAHOO" if not specified.
+        comment: Optional note.
+    """
+    return _create_activity(
+        activity_type=activity_type,
+        symbol=symbol,
+        quantity=quantity,
+        unit_price=unit_price,
+        currency=currency,
+        date=date,
+        account_id=account_id,
+        fee=fee,
+        data_source=data_source,
+        comment=comment,
+        client=kwargs.get("client"),
+    )
+
+
 ALL_TOOLS = [
     get_market_data,
     get_portfolio_snapshot,
@@ -134,6 +180,7 @@ ALL_TOOLS = [
     check_risk,
     get_trade_history,
     lookup_symbol,
+    create_activity,
 ]
 
 

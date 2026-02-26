@@ -18,6 +18,7 @@ from agent.tools.scanner import scan_strategies
 from agent.tools.risk import check_risk
 from agent.tools.history import get_trade_history
 from agent.tools.symbols import lookup_symbol
+from agent.tools.activities import create_activity
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ TOOL_REGISTRY = {
     "check_risk": check_risk,
     "get_trade_history": get_trade_history,
     "lookup_symbol": lookup_symbol,
+    "create_activity": create_activity,
 }
 
 # Tools that call Ghostfolio API; they accept an optional client (we pass one built from request token)
@@ -37,6 +39,7 @@ GHOSTFOLIO_TOOLS = frozenset({
     "get_trade_history",
     "check_risk",
     "lookup_symbol",
+    "create_activity",
 })
 
 

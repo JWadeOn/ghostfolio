@@ -82,7 +82,7 @@ pip install -r requirements.txt   # if not already installed
 uvicorn agent.app:app --host 0.0.0.0 --port 8000
 ```
 
-Leave it running. The agent serves at **http://localhost:8000**.
+Leave it running. The agent serves at **http://localhost:8000**. Restart the agent (stop and run the uvicorn command again) after changing tools or agent code so new tools like `create_activity` are loaded.
 
 ### 6. Start the Ghostfolio API
 

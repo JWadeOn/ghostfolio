@@ -117,6 +117,15 @@ class GhostfolioClient:
     def get_orders(self, **filters) -> Any:
         return self._get("/api/v1/order", params=filters)
 
+    def create_order(self, payload: dict) -> Any:
+        """Create a portfolio activity (order) via POST /api/v1/order.
+
+        Payload must match CreateOrderDto: currency, date (ISO8601), fee, quantity,
+        symbol, type (BUY, SELL, DIVIDEND, FEE, INTEREST, LIABILITY), unitPrice;
+        optional: accountId, comment, dataSource, tags, updateAccountBalance.
+        """
+        return self._post("/api/v1/order", json_body=payload)
+
     # --- Watchlist ---
 
     def get_watchlist(self) -> Any:

@@ -51,6 +51,14 @@ app.add_middleware(
 # In-memory thread state (for conversation continuity)
 _thread_states: dict[str, dict] = {}
 
+# Log loaded tools at startup so you can verify create_activity is available after code changes
+try:
+    from agent.tools.langchain_tools import get_tools
+    _tool_names = [t.name for t in get_tools() if getattr(t, "name", None)]
+    logger.info("Agent tools loaded: %s", ", ".join(_tool_names))
+except Exception as e:
+    logger.warning("Could not list tools at startup: %s", e)
+
 
 class ChatRequest(BaseModel):
     message: str
