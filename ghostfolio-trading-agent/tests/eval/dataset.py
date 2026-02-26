@@ -18,7 +18,7 @@ eval_cases = [
     },
     {
         "input": "Can I buy $10,000 of TSLA?",
-        "expected_tools": ["get_portfolio_snapshot", "get_market_data", "check_risk"],
+        "expected_tools": ["get_portfolio_snapshot", "get_market_data", "trade_guardrails_check"],
         "expected_intent": "risk_check",
         "expected_output_contains": ["position"],
         "category": "risk_check",
@@ -58,13 +58,13 @@ eval_cases = [
     {
         "input": "Should I add more to my NVDA position?",
         "expected_intent": "risk_check",
-        "expected_tools": ["get_portfolio_snapshot", "check_risk"],
+        "expected_tools": ["get_portfolio_snapshot", "trade_guardrails_check"],
         "category": "risk_check",
     },
     {
         "input": "Should I sell GOOG?",
         "expected_intent": "risk_check",
-        "expected_tools": ["get_portfolio_snapshot", "get_market_data", "check_risk"],
+        "expected_tools": ["get_portfolio_snapshot", "get_market_data", "trade_guardrails_check"],
         "expected_output_contains": ["position", "portfolio"],
         "category": "risk_check",
     },

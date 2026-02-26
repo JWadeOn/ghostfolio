@@ -61,7 +61,8 @@ def _guess_source_tool(claim: str, tool_results: dict) -> str | None:
         "detect_regime": ["regime", "trend", "volatility", "breadth", "correlation", "rotation", "vix"],
         "get_portfolio_snapshot": ["portfolio", "holding", "cash", "invested", "account", "position"],
         "scan_strategies": ["score", "signal", "breakout", "reversion", "momentum", "entry", "stop", "target"],
-        "check_risk": ["risk", "violation", "sector", "concentration", "position size"],
+        "portfolio_guardrails_check": ["risk", "violation", "sector", "concentration", "position size", "cash buffer"],
+        "trade_guardrails_check": ["risk", "violation", "sector", "concentration", "position size", "stop loss"],
         "get_trade_history": ["win rate", "profit factor", "p&l", "trade", "loss"],
     }
 
@@ -86,7 +87,11 @@ def _build_intent_data(intent: str, tool_results: dict) -> dict:
             "matches": scan.get("matches", 0),
         }
     elif intent == "risk_check":
-        return tool_results.get("check_risk", {})
+        return (
+            tool_results.get("trade_guardrails_check")
+            or tool_results.get("portfolio_guardrails_check")
+            or tool_results.get("check_risk", {})
+        )
     elif intent == "journal_analysis":
         history = tool_results.get("get_trade_history", {})
         return {

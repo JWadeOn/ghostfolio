@@ -28,8 +28,8 @@ def create_activity(
     """Record a portfolio activity in Ghostfolio (buy, sell, dividend, fee, etc.).
 
     Builds a CreateOrderDto payload and calls GhostfolioClient.create_order.
-    For "record a trade" flows, the user may first run check_risk and optionally
-    get_portfolio_snapshot to obtain account_id when they have multiple accounts.
+    For "record a trade" flows, the user may first run trade_guardrails_check and
+    optionally get_portfolio_snapshot to obtain account_id when they have multiple accounts.
 
     Args:
         activity_type: One of BUY, SELL, DIVIDEND, FEE, INTEREST, LIABILITY.

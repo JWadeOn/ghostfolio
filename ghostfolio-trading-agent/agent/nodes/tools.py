@@ -15,7 +15,7 @@ from agent.tools.market_data import get_market_data
 from agent.tools.portfolio import get_portfolio_snapshot
 from agent.tools.regime import detect_regime
 from agent.tools.scanner import scan_strategies
-from agent.tools.risk import check_risk
+from agent.tools.risk import portfolio_guardrails_check, trade_guardrails_check, check_risk
 from agent.tools.history import get_trade_history
 from agent.tools.symbols import lookup_symbol
 from agent.tools.activities import create_activity
@@ -27,16 +27,19 @@ TOOL_REGISTRY = {
     "get_portfolio_snapshot": get_portfolio_snapshot,
     "detect_regime": detect_regime,
     "scan_strategies": scan_strategies,
-    "check_risk": check_risk,
+    "portfolio_guardrails_check": portfolio_guardrails_check,
+    "trade_guardrails_check": trade_guardrails_check,
     "get_trade_history": get_trade_history,
     "lookup_symbol": lookup_symbol,
     "create_activity": create_activity,
+    "check_risk": check_risk,  # legacy — remove when all callers migrate
 }
 
-# Tools that call Ghostfolio API; they accept an optional client (we pass one built from request token)
 GHOSTFOLIO_TOOLS = frozenset({
     "get_portfolio_snapshot",
     "get_trade_history",
+    "portfolio_guardrails_check",
+    "trade_guardrails_check",
     "check_risk",
     "lookup_symbol",
     "create_activity",

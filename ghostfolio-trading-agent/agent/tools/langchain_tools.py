@@ -10,7 +10,8 @@ from agent.tools.market_data import get_market_data as _get_market_data
 from agent.tools.portfolio import get_portfolio_snapshot as _get_portfolio_snapshot
 from agent.tools.regime import detect_regime as _detect_regime
 from agent.tools.scanner import scan_strategies as _scan_strategies
-from agent.tools.risk import check_risk as _check_risk
+from agent.tools.risk import portfolio_guardrails_check as _portfolio_guardrails_check
+from agent.tools.risk import trade_guardrails_check as _trade_guardrails_check
 from agent.tools.history import get_trade_history as _get_trade_history
 from agent.tools.symbols import lookup_symbol as _lookup_symbol
 from agent.tools.activities import create_activity as _create_activity
@@ -74,30 +75,37 @@ def scan_strategies(
 
 
 @tool
-def check_risk(
-    symbol: Optional[str] = None,
-    direction: str = "LONG",
-    action: str = "buy",
+def portfolio_guardrails_check() -> dict:
+    """Assess portfolio-level risk: position concentration, sector concentration, cash buffer, diversification.
+
+    Use when the user asks about portfolio risk, health check, or whether they are within their limits.
+    No symbol or trade amount needed — this checks the portfolio itself.
+    """
+    return _portfolio_guardrails_check()
+
+
+@tool
+def trade_guardrails_check(
+    symbol: str,
+    side: str = "buy",
     position_size_pct: Optional[float] = None,
     dollar_amount: Optional[float] = None,
 ) -> dict:
-    """Evaluate whether a proposed trade fits portfolio risk parameters, or assess portfolio-level risk.
+    """Check if a proposed buy or sell fits portfolio guardrails.
 
-    Checks position size limits (max 5%), sector concentration (max 30%), correlation with existing holdings, and cash availability.
-    When action="sell", evaluates whether selling an existing position is advisable.
-    When symbol is omitted, runs a portfolio-level risk assessment.
+    For buys: checks position size (max 5%), sector concentration (max 30%), correlation, cash availability.
+    Returns violations, warnings, suggested position size, and stop loss level.
+    For sells: evaluates reasons to sell/hold, P&L, hold period, stop loss, and portfolio after sale.
 
     Args:
-        symbol: Ticker symbol to evaluate. Omit for portfolio-level assessment.
-        direction: "LONG" or "SHORT".
-        action: "buy" to evaluate adding a position, "sell" to evaluate selling.
+        symbol: Ticker symbol to evaluate (e.g. "AAPL").
+        side: "buy" to evaluate adding a position, "sell" to evaluate selling.
         position_size_pct: Proposed position as percentage of portfolio (alternative to dollar_amount).
         dollar_amount: Proposed dollar amount (alternative to position_size_pct).
     """
-    return _check_risk(
+    return _trade_guardrails_check(
         symbol=symbol,
-        direction=direction,
-        action=action,
+        side=side,
         position_size_pct=position_size_pct,
         dollar_amount=dollar_amount,
     )
@@ -177,7 +185,8 @@ ALL_TOOLS = [
     get_portfolio_snapshot,
     detect_regime,
     scan_strategies,
-    check_risk,
+    portfolio_guardrails_check,
+    trade_guardrails_check,
     get_trade_history,
     lookup_symbol,
     create_activity,
