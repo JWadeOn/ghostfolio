@@ -9,8 +9,8 @@
     }
     @for (msg of messages; track $index) {
       <div
-        class="mb-3 p-3 rounded"
-        [class.bg-light]="msg.role === 'user'"
+        class="mb-3 p-3 rounded message-bubble"
+        [class.message-user]="msg.role === 'user'"
         [class.text-danger]="msg.error"
       >
         <strong
@@ -28,7 +28,7 @@
       </div>
     }
   </div>
-  <div class="p-3 border-top bg-white">
+  <div class="p-3 border-top trading-agent-input-bar">
     <form class="d-flex gap-2 align-items-end" (ngSubmit)="onSubmit()">
       <mat-form-field appearance="outline" class="flex-grow-1">
         <mat-label i18n>Message</mat-label>

@@ -2,3 +2,25 @@
   display: block;
   height: 100%;
 }
+
+// Input bar: light background in default theme, dark in dark theme
+.trading-agent-input-bar {
+  background-color: var(--light-background);
+  border-top-color: rgba(var(--dark-dividers));
+}
+
+// User message bubble: light gray in default theme
+.message-bubble.message-user {
+  background-color: #f5f5f5;
+}
+
+:host-context(.theme-dark) {
+  .trading-agent-input-bar {
+    background-color: var(--dark-background);
+    border-top-color: rgba(var(--light-dividers));
+  }
+
+  .message-bubble.message-user {
+    background-color: rgba(255, 255, 255, 0.08);
+  }
+}
