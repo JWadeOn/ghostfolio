@@ -126,31 +126,43 @@ def _compute_confidence(state: AgentState) -> int:
     intent = state.get("intent", "general")
     regime = state.get("regime")
 
-    # +10 for each tool that returned successfully
     for tool_name, result in tool_results.items():
         if isinstance(result, dict) and "error" in result:
             score -= 5
         else:
             score += 10
 
-    # Regime alignment bonus
     if regime and "composite" in regime:
         confidence = regime.get("confidence", 0)
         score += confidence // 10  # +0 to +10
 
-    # Scanner results bonus
     scan_result = tool_results.get("scan_strategies")
     if scan_result and isinstance(scan_result, dict):
         matches = scan_result.get("matches", 0)
         if matches > 0:
             score += min(10, matches * 3)
 
-    # Risk check result
+    for guardrail_key in ("portfolio_guardrails_check", "trade_guardrails_check"):
+        guardrail_result = tool_results.get(guardrail_key)
+        if guardrail_result and isinstance(guardrail_result, dict):
+            if guardrail_result.get("passed"):
+                score += 10
+            else:
+                score -= 5
+
+    # Legacy support: check_risk (until fully removed)
     risk_result = tool_results.get("check_risk")
     if risk_result and isinstance(risk_result, dict):
         if risk_result.get("passed"):
             score += 10
         else:
+            score -= 5
+
+    compliance_result = tool_results.get("compliance_check")
+    if compliance_result and isinstance(compliance_result, dict):
+        if compliance_result.get("passed"):
+            score += 5
+        elif compliance_result.get("violations"):
             score -= 5
 
     return max(0, min(100, score))
@@ -160,12 +172,14 @@ def _check_guardrails(synthesis: str, intent: str, tool_results: dict) -> list[s
     """Check risk guardrails in the synthesis."""
     issues = []
 
-    # If response suggests a trade (buy/enter), must include stop loss and target
     trade_keywords = ["buy", "enter", "long", "short", "position"]
     has_trade_suggestion = any(kw in synthesis.lower() for kw in trade_keywords)
-    # For sell evaluations, we recommend selling — not entering a trade — so skip stop/target requirement
-    risk_result = tool_results.get("check_risk", {})
-    is_sell_evaluation = risk_result.get("sell_evaluation") or risk_result.get("action") == "sell"
+
+    trade_result = tool_results.get("trade_guardrails_check", {})
+    # Legacy fallback until check_risk is fully removed
+    if not trade_result:
+        trade_result = tool_results.get("check_risk", {})
+    is_sell_evaluation = trade_result.get("sell_evaluation") or trade_result.get("action") == "sell"
 
     if has_trade_suggestion and not is_sell_evaluation and intent in ("opportunity_scan", "risk_check", "chart_validation"):
         if "stop" not in synthesis.lower() and "stop loss" not in synthesis.lower():
@@ -173,7 +187,6 @@ def _check_guardrails(synthesis: str, intent: str, tool_results: dict) -> list[s
         if "target" not in synthesis.lower() and "take profit" not in synthesis.lower():
             issues.append("Trade suggestion missing target/take profit level")
 
-    # Check for guaranteed language
     guarantee_words = ["guaranteed", "will definitely", "100% certain", "can't lose", "sure thing"]
     for word in guarantee_words:
         if word in synthesis.lower():
@@ -182,8 +195,55 @@ def _check_guardrails(synthesis: str, intent: str, tool_results: dict) -> list[s
     return issues
 
 
+def _check_tax_estimate_sanity(synthesis: str, tool_results: dict) -> list[str]:
+    """Domain check: tax_estimate results must be non-negative and plausible."""
+    issues = []
+    tax_result = tool_results.get("tax_estimate")
+    if not tax_result or not isinstance(tax_result, dict):
+        return issues
+
+    liability = tax_result.get("estimated_liability")
+    if liability is not None and liability < 0:
+        issues.append(
+            f"tax_estimate returned negative liability ({liability}); result is suspect"
+        )
+
+    effective_rate = tax_result.get("effective_rate")
+    if effective_rate is not None and (effective_rate < 0 or effective_rate > 100):
+        issues.append(
+            f"tax_estimate effective_rate ({effective_rate}) outside 0–100 range"
+        )
+
+    return issues
+
+
+def _check_compliance_consistency(synthesis: str, tool_results: dict) -> list[str]:
+    """Domain check: synthesis must not contradict compliance_check results."""
+    issues = []
+    comp_result = tool_results.get("compliance_check")
+    if not comp_result or not isinstance(comp_result, dict):
+        return issues
+
+    synth_lower = synthesis.lower()
+    tool_passed = comp_result.get("passed", True)
+    tool_violations = comp_result.get("violations", [])
+
+    says_no_violations = (
+        "no violations" in synth_lower
+        or "no compliance issues" in synth_lower
+        or "fully compliant" in synth_lower
+    )
+
+    if says_no_violations and (not tool_passed or len(tool_violations) > 0):
+        issues.append(
+            "Synthesis says no violations but compliance_check reported violations"
+        )
+
+    return issues
+
+
 def verify_node(state: AgentState) -> dict[str, Any]:
-    """Verify the synthesis: fact-check, confidence, guardrails."""
+    """Verify the synthesis: fact-check, confidence, guardrails, domain checks."""
     synthesis = state.get("synthesis", "")
     tool_results = state.get("tool_results", {})
     intent = state.get("intent", "general")
@@ -205,6 +265,14 @@ def verify_node(state: AgentState) -> dict[str, Any]:
     # 4. Risk guardrails
     guardrail_issues = _check_guardrails(synthesis, intent, tool_results)
     all_issues.extend(guardrail_issues)
+
+    # 5. Tax estimate sanity
+    tax_issues = _check_tax_estimate_sanity(synthesis, tool_results)
+    all_issues.extend(tax_issues)
+
+    # 6. Compliance consistency
+    compliance_issues = _check_compliance_consistency(synthesis, tool_results)
+    all_issues.extend(compliance_issues)
 
     passed = len(all_issues) == 0
 
