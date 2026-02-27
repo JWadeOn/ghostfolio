@@ -272,6 +272,8 @@ def run_single_eval(
             "agent_confidence": 0,
             "errors": [f"Agent error: {str(e)}"],
             "tools_called": [],
+            "intent": "",
+            "response": {},
         }
     elapsed = time.perf_counter() - start
 
@@ -346,6 +348,7 @@ def run_single_eval(
         "errors": errors,
         "tools_called": tools_called,
         "intent": result.get("intent"),
+        "response": response,
     }
 
 
@@ -545,77 +548,175 @@ def run_langsmith_experiment(
     results: list[dict],
     aggregate: dict,
     version: str = "1",
-) -> None:
-    """Upload dataset (idempotent) and run as LangSmith experiment with evaluators. No-op if LANGCHAIN_API_KEY unset."""
+) -> str | None:
+    """Upload dataset (idempotent), run LangSmith evaluate() with replay of pre-computed results.
+
+    Uses the evaluate() API so the experiment appears in Datasets & Experiments UI.
+    No second agent run — replay_target returns results from run_all_evals().
+    Returns the experiment URL if successful, None otherwise.
+    Silently no-ops when LANGCHAIN_API_KEY is not set.
+    """
     from agent.config import get_settings
-    _settings = get_settings()
-    api_key = os.environ.get("LANGCHAIN_API_KEY") or _settings.langchain_api_key
+
+    api_key = os.environ.get("LANGCHAIN_API_KEY") or get_settings().langchain_api_key
     if not api_key:
-        logger.info("LangSmith: LANGCHAIN_API_KEY not set; skipping dataset/experiment upload.")
-        return
+        return None
     os.environ.setdefault("LANGCHAIN_API_KEY", api_key)
+
     try:
-        from langsmith import Client
+        from langsmith import Client, evaluate  # noqa: WPS433
     except ImportError:
-        logger.warning("langsmith not available; skipping LangSmith experiment.")
-        return
+        logger.warning("langsmith package not installed; skipping LangSmith experiment.")
+        return None
 
     client = Client()
-    dataset_name = DATASET_NAME
-    experiment_name = f"{EXPERIMENT_PREFIX}{version}"
 
-    # Idempotent dataset: create or get existing by name
+    # ---- 1. Idempotent dataset (extended outputs for evaluators) --------------
     try:
-        datasets = [d for d in client.list_datasets() if d.name == dataset_name]
+        ds = client.read_dataset(dataset_name=DATASET_NAME)
+        logger.info("LangSmith: reusing dataset '%s'", DATASET_NAME)
     except Exception:
-        datasets = []
-    if datasets:
-        ds = datasets[0]
-        logger.info("LangSmith: using existing dataset %s (%s)", ds.name, ds.id)
-    else:
-        ds = client.create_dataset(dataset_name=dataset_name, description="Ghostfolio trading agent evals")
-        logger.info("LangSmith: created dataset %s (%s)", ds.name, ds.id)
+        ds = client.create_dataset(
+            dataset_name=DATASET_NAME,
+            description="Ghostfolio trading agent eval cases",
+        )
+        logger.info("LangSmith: created dataset '%s'", DATASET_NAME)
 
-    # Create examples from eval_cases if not already present (idempotent by input)
-    existing_inputs = set()
+    existing_queries: set[str] = set()
     try:
         for ex in client.list_examples(dataset_id=ds.id):
-            existing_inputs.add((ex.inputs or {}).get("input", ""))
+            existing_queries.add((ex.inputs or {}).get("query", ""))
     except Exception:
         pass
+
+    added = 0
     for case in eval_cases:
-        inp = case.get("input", "")
-        if not inp or inp in existing_inputs:
+        query = case.get("input", "")
+        if query in existing_queries:
             continue
         try:
             client.create_example(
                 dataset_id=ds.id,
-                inputs={"input": inp},
-                outputs={},
-                metadata={
-                    "expected_intent": case.get("expected_intent"),
-                    "expected_tools": case.get("expected_tools"),
+                inputs={"query": query},
+                outputs={
+                    "expected_intent": case.get("expected_intent", ""),
+                    "expected_tools": case.get("expected_tools", []),
                     "expected_output_contains": case.get("expected_output_contains", []),
                     "should_not_contain": case.get("should_not_contain", []),
-                    "category": case.get("category", "general"),
+                    "confidence_min": case.get("confidence_min", 0),
                 },
             )
-            existing_inputs.add(inp)
-        except Exception as e:
-            logger.debug("Create example skipped: %s", e)
+            existing_queries.add(query)
+            added += 1
+        except Exception as exc:
+            logger.debug("LangSmith: example upload skipped: %s", exc)
+    if added:
+        logger.info("LangSmith: uploaded %d new example(s)", added)
 
-    # Log experiment run to LangSmith so it appears as a tracked run (project = experiment name)
+    # ---- 2. Replay target (no second agent call) -------------------------------
+    results_by_query = {r["input"]: r for r in results}
+
+    def replay_target(inputs: dict) -> dict:
+        result = results_by_query.get(inputs.get("query", ""), {})
+        response = result.get("response", {}) or {}
+        return {
+            "intent": result.get("intent", ""),
+            "tools_called": result.get("tools_called", []),
+            "summary": response.get("summary", ""),
+            "confidence": response.get("confidence", 0),
+            "overall_score": result.get("overall_score", 0.0),
+            "passed": result.get("passed", False),
+        }
+
+    # ---- 3. Evaluators (run.outputs and example.outputs) ----------------------
+    def _outputs(run: Any) -> dict:
+        return getattr(run, "outputs", None) or {}
+
+    def _example_outputs(example: Any) -> dict:
+        return getattr(example, "outputs", None) or {}
+
+    def _intent_evaluator(run: Any, example: Any) -> dict:
+        predicted = _outputs(run).get("intent", "")
+        expected = _example_outputs(example).get("expected_intent", "")
+        return {"key": "intent_score", "score": 1.0 if predicted == expected else 0.0}
+
+    def _tools_evaluator(run: Any, example: Any) -> dict:
+        expected = set(_example_outputs(example).get("expected_tools", []))
+        actual = set(_outputs(run).get("tools_called", []))
+        if not expected:
+            return {"key": "tools_score", "score": 1.0}
+        return {"key": "tools_score", "score": len(expected & actual) / len(expected)}
+
+    def _content_evaluator(run: Any, example: Any) -> dict:
+        terms = _example_outputs(example).get("expected_output_contains", [])
+        summary = (_outputs(run).get("summary", "") or "").lower()
+        if not terms:
+            return {"key": "content_score", "score": 1.0}
+        hits = sum(1 for t in terms if (t or "").lower() in summary)
+        return {"key": "content_score", "score": hits / len(terms)}
+
+    def _safety_evaluator(run: Any, example: Any) -> dict:
+        forbidden = _example_outputs(example).get("should_not_contain", [])
+        summary = (_outputs(run).get("summary", "") or "").lower()
+        violations = [t for t in forbidden if (t or "").lower() in summary]
+        return {"key": "safety_score", "score": 0.0 if violations else 1.0}
+
+    def _confidence_evaluator(run: Any, example: Any) -> dict:
+        confidence = _outputs(run).get("confidence", 0)
+        min_conf = _example_outputs(example).get("confidence_min", 0)
+        return {"key": "confidence_score", "score": 1.0 if confidence >= min_conf else 0.0}
+
+    def _overall_evaluator(run: Any, example: Any) -> dict:
+        return {"key": "overall_score", "score": float(_outputs(run).get("overall_score", 0.0))}
+
+    evaluators = [
+        _intent_evaluator,
+        _tools_evaluator,
+        _content_evaluator,
+        _safety_evaluator,
+        _confidence_evaluator,
+        _overall_evaluator,
+    ]
+
+    # ---- 4. Run evaluate() ----------------------------------------------------
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    experiment_prefix = f"{EXPERIMENT_PREFIX}{version}"
     try:
-        client.create_run(
-            name=experiment_name,
-            run_type="chain",
-            inputs={"eval_aggregate": aggregate, "total_cases": len(results)},
-            project_name=experiment_name,
+        experiment_results = evaluate(
+            replay_target,
+            data=DATASET_NAME,
+            evaluators=evaluators,
+            experiment_prefix=experiment_prefix,
+            metadata={
+                "version": version,
+                "timestamp": ts,
+                "pass_rate": aggregate.get("pass_rate_pct"),
+                "total_cases": aggregate.get("total"),
+            },
+            client=client,
         )
-        logger.info("LangSmith: run created for experiment %s", experiment_name)
-    except Exception as e:
-        logger.warning("LangSmith create_run not available or failed: %s", e)
-    logger.info("LangSmith: experiment %s (aggregate pass_rate=%.1f%%)", experiment_name, aggregate.get("pass_rate_pct", 0))
+    except Exception as exc:
+        logger.warning("LangSmith evaluate() failed: %s", exc)
+        return None
+
+    # ---- 5. Resolve and return experiment URL ---------------------------------
+    experiment_url: str | None = None
+    try:
+        exp_name = getattr(experiment_results, "experiment_name", None)
+        if exp_name:
+            project = client.read_project(project_name=exp_name)
+            experiment_url = f"https://smith.langchain.com/projects/p/{project.id}"
+        if not experiment_url:
+            experiment_url = "https://smith.langchain.com/projects"
+    except Exception:
+        experiment_url = experiment_url or "https://smith.langchain.com/projects"
+
+    logger.info(
+        "LangSmith: experiment '%s' logged (pass_rate=%.1f%%)",
+        experiment_prefix,
+        aggregate.get("pass_rate_pct", 0),
+    )
+    return experiment_url
 
 
 def main() -> int:
@@ -666,7 +767,9 @@ def main() -> int:
                 print(f"        - {err}")
 
     version = os.environ.get("EVAL_VERSION", "1")
-    run_langsmith_experiment(results, aggregate, version=version)
+    experiment_url = run_langsmith_experiment(results, aggregate, version=version)
+    if experiment_url:
+        print(f"LangSmith experiment: {experiment_url}")
 
     return 0 if target_met and (regression_delta is None or regression_delta >= 0) else 1
 
