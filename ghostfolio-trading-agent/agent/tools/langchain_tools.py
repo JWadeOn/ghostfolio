@@ -45,7 +45,7 @@ def get_market_data(
 def get_portfolio_snapshot() -> dict:
     """Fetch the trader's current portfolio: holdings, performance, accounts, and summary (total value, cash, P&L).
 
-    Use this when you need to see what the trader currently holds, their cash balance, portfolio value, or allocation breakdown.
+    Holdings include current market value and cost basis (investment). Market prices are refreshed from a live feed so values reflect current prices — use this for tax exposure / \"if I sell\" questions. Use when you need current holdings, cash balance, portfolio value, or allocation.
     """
     return _get_portfolio_snapshot()
 

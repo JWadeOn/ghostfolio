@@ -10,9 +10,6 @@ from agent.tools.market_data import get_latest_prices
 
 logger = logging.getLogger(__name__)
 
-# Ghostfolio uses 1 as placeholder when market data is missing (see portfolio-calculator.ts)
-PLACEHOLDER_PRICES = (0, 1)
-
 
 def _cost_basis_from_activities(activities: list[dict]) -> dict[str, float]:
     """
@@ -115,11 +112,10 @@ def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, 
             "sectors": h.get("sectors", []),
         })
 
-    # Enrich with real prices when Ghostfolio returned placeholders (0 or 1)
-    symbols_to_fetch = [
-        ho["symbol"] for ho in holdings
-        if ho["symbol"] and (ho["market_price"] in PLACEHOLDER_PRICES or not ho["market_price"])
-    ]
+    # Always refresh market prices from live data so "current value" and "tax if I sell"
+    # use actual market prices, not Ghostfolio's cached/cost-based values (which can
+    # show false break-even when the data source is manual or stale).
+    symbols_to_fetch = [ho["symbol"] for ho in holdings if ho["symbol"]]
     if symbols_to_fetch:
         try:
             latest_prices = get_latest_prices(symbols_to_fetch)
