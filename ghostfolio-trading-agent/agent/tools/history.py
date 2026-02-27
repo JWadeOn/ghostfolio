@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from agent.ghostfolio_client import GhostfolioClient
-from agent.tools.market_data import get_market_data
+from agent.tools.market_data import get_market_data, get_latest_prices
 
 logger = logging.getLogger(__name__)
 
@@ -176,21 +176,32 @@ def get_trade_history(
             "is_winner": pnl_pct > 0,
         })
 
-    # Enrich open positions with current prices
+    # Enrich open positions with current prices (same source as portfolio snapshot:
+    # get_latest_prices so "current" price and unrealized P&L are consistent and not stale).
     if open_positions:
         open_symbols = list({p["symbol"] for p in open_positions})
-        current_data = get_market_data(open_symbols, period="5d")
+        latest_prices = get_latest_prices(open_symbols)
         for pos in open_positions:
-            sym_data = current_data.get(pos["symbol"], [])
-            if isinstance(sym_data, list) and sym_data:
-                current_price = sym_data[-1].get("close", 0)
+            current_price = latest_prices.get(pos["symbol"])
+            if current_price is not None and current_price > 0:
                 pos["current_price"] = current_price
-                if pos["buy_price"] > 0:
+                buy_price = pos.get("buy_price") or 0
+                qty = pos.get("quantity") or 0
+                if buy_price > 0:
                     pos["unrealized_pnl_pct"] = round(
-                        (current_price - pos["buy_price"]) / pos["buy_price"] * 100, 2
+                        (current_price - buy_price) / buy_price * 100, 2
+                    )
+                    pos["unrealized_pnl_dollar"] = round(
+                        (current_price - buy_price) * qty, 2
                     )
                 else:
                     pos["unrealized_pnl_pct"] = 0
+                    pos["unrealized_pnl_dollar"] = 0
+            else:
+                # No live price; do not set current_price so agent does not claim "currently at X"
+                pos["current_price"] = None
+                pos["unrealized_pnl_pct"] = None
+                pos["unrealized_pnl_dollar"] = None
 
     # Compute aggregates
     wins = [t for t in enriched_trades if t["is_winner"]]
