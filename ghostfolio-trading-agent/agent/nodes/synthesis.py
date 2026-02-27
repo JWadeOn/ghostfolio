@@ -12,7 +12,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from agent.config import get_settings
 from agent.state import AgentState
-from agent.nodes.conversation import format_recent_conversation
+from agent.nodes.conversation import filter_conversation_messages, format_recent_conversation
 from agent.observability import (
     extract_token_usage, track_latency, make_error_entry, make_trace_entry,
     ErrorCategory,
@@ -26,7 +26,7 @@ CRITICAL RULES:
 1. Every number you mention MUST come from the tool results provided below. Do not make up prices, percentages, or statistics.
 2. If you are not sure about a data point, say so explicitly.
 3. Always include risk context: stop loss, position sizing concerns, regime alignment — but ONLY when the user asked for trading advice. For greetings, "who are you", or non-trading questions, do NOT mention stop loss, entry, target, buy/sell recommendations.
-4. Never guarantee returns or make specific price predictions without sourcing them from the data. NEVER use the words "promise", "promised", or "I promise" in any form — instead say "cannot guarantee", "not financial advice", or "no assurance". When the user asks for guaranteed returns, decline clearly with "cannot guarantee" and "not financial advice".
+4. Never guarantee returns or make specific price predictions without sourcing them from the data. When declining guarantee-seeking queries (e.g. "guarantee me X% returns", "promise me gains"), you MUST: (a) NEVER use the word "promise" in ANY form — not "promise", "promised", "I can't promise", "no one can promise", "don't promise", or any sentence containing the word "promise". Instead say "cannot guarantee", "no one can guarantee", or "not possible to predict with certainty"; (b) include the exact phrase "not financial advice" in your response (e.g. "This is not financial advice." or "I cannot guarantee returns; this is not financial advice.").
 5. Be concise and actionable. Traders want signal, not noise.
 6. Use specific numbers from the data — don't say "the stock is up" when you can say "AAPL is up 2.3% this week at $187.42"."""
 
@@ -101,9 +101,10 @@ Use only numbers and facts from the data; do not invent figures.""",
 
     "create_activity": """You are confirming that a portfolio activity (buy/sell) was recorded.
 Use the create_activity tool result. Your response MUST:
-- State clearly that the activity was "recorded" (e.g. "Recorded.", "I've recorded the activity.", "Activity recorded.").
+- State clearly that the activity was "recorded" (use the word "recorded", e.g. "Recorded.", "I've recorded the activity.", "Activity recorded."). Do not use only "logged" or "saved" without also saying "recorded".
 - Use the word "activity" in the confirmation (e.g. "recorded the activity", "activity has been recorded").
-- Include symbol, quantity, unit price, total cost or total value, and date from the tool result.
+- Include the symbol explicitly (e.g. GOOG, AAPL) so the user sees which ticker was recorded.
+- Include quantity, unit price, total cost or total value, and date from the tool result.
 Keep it short and factual. Use only numbers from the tool results.""",
 
     "general": """You are a helpful trading assistant. Answer the trader's question naturally.
@@ -183,14 +184,17 @@ def synthesize_node(state: AgentState) -> dict[str, Any]:
             system += f"- {issue}\n"
         system += "\nPlease regenerate your response using only the data provided. Fix the issues listed above."
 
-    # Get the last HumanMessage (not the last message, which may be AIMessage/ToolMessage from ReAct)
+    # Strip ReAct-internal messages (tool calls / tool results) so the
+    # synthesis LLM never sees raw tool invocation traces.
+    conversational = filter_conversation_messages(messages)
+
     user_text = ""
-    if messages:
-        for msg in reversed(messages):
+    if conversational:
+        for msg in reversed(conversational):
             if isinstance(msg, HumanMessage):
                 user_text = msg.content if hasattr(msg, "content") else str(msg)
                 break
-    recent_conv = format_recent_conversation(messages)
+    recent_conv = format_recent_conversation(conversational)
     if recent_conv:
         user_block = f"Recent conversation:\n{recent_conv}\n\nTrader's question: {user_text}"
     else:
