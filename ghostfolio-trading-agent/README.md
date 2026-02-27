@@ -358,7 +358,7 @@ Targets tight consolidation near highs with declining volume — classic breakou
 
 ### `POST /api/chat`
 
-Main conversational endpoint. Supports multi-turn conversations via `thread_id`.
+Main conversational endpoint. Supports multi-turn conversations via `thread_id`. **Important:** For follow-up messages (e.g. "Analyze it", "What about that stock?") to refer to symbols from the previous turn, the client must send the **same** `thread_id` for the whole conversation; otherwise the agent has no conversation history and will ask for clarification.
 
 ```json
 {
