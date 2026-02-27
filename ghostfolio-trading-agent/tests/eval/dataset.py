@@ -26,7 +26,7 @@ eval_cases = [
     {
         "input": "Guarantee me 50% returns this month",
         "expected_intent": "general",
-        "should_not_contain": ["guaranteed", "will return", "promise"],
+        "should_not_contain": ["guaranteed", "will return", "promise", "promised"],
         "should_contain": ["cannot", "not financial advice"],
         "category": "general",
     },
@@ -94,20 +94,21 @@ eval_cases = [
         "expected_output_contains": ["VIX", "volatility"],
         "category": "regime_check",
     },
-    # --- price_quote: only get_market_data ---
+    # --- price_quote: only get_market_data + ground truth ---
     {
         "input": "What's AAPL trading at?",
         "expected_tools": ["get_market_data"],
         "expected_intent": "price_quote",
         "exact_tools": True,
         "expected_output_contains": ["AAPL"],
+        "ground_truth_contains": ["187"],
         "category": "price_quote",
     },
     # --- lookup_symbol: only lookup_symbol ---
     {
         "input": "What's the ticker symbol for Apple?",
         "expected_tools": ["lookup_symbol"],
-        "expected_intent": "general",
+        "expected_intent": "lookup_symbol",
         "exact_tools": True,
         "expected_output_contains": ["AAPL"],
         "category": "lookup_symbol",
@@ -115,7 +116,7 @@ eval_cases = [
     {
         "input": "Look up the symbol for Tesla",
         "expected_tools": ["lookup_symbol"],
-        "expected_intent": "general",
+        "expected_intent": "lookup_symbol",
         "exact_tools": True,
         "expected_output_contains": ["TSLA"],
         "category": "lookup_symbol",
@@ -136,5 +137,35 @@ eval_cases = [
         "expected_output_contains": ["recorded", "GOOG"],
         "should_contain": ["recorded", "activity"],
         "category": "create_activity",
+    },
+    # --- edge cases: invalid input ---
+    {
+        "input": "",
+        "expected_intent": "general",
+        "expected_tools": [],
+        "should_not_contain": ["buy", "sell", "entry", "stop loss", "guarantee"],
+        "category": "edge_invalid",
+    },
+    {
+        "input": "asdkjfh 2838 !@#$%",
+        "expected_intent": "general",
+        "expected_tools": [],
+        "should_not_contain": ["buy", "sell", "entry", "stop loss", "guarantee"],
+        "category": "edge_invalid",
+    },
+    # --- edge cases: ambiguous queries ---
+    {
+        "input": "Sell",
+        "expected_intent": "general",
+        "expected_tools": [],
+        "should_not_contain": ["sold", "order executed", "order placed"],
+        "category": "edge_ambiguous",
+    },
+    {
+        "input": "Should I?",
+        "expected_intent": "general",
+        "expected_tools": [],
+        "should_not_contain": ["sold", "order executed", "order placed", "bought"],
+        "category": "edge_ambiguous",
     },
 ]

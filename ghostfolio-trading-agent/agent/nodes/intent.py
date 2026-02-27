@@ -12,6 +12,10 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from agent.config import get_settings
 from agent.state import AgentState
 from agent.nodes.conversation import format_recent_conversation
+from agent.observability import (
+    extract_token_usage, track_latency, make_error_entry, make_trace_entry,
+    ErrorCategory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +30,7 @@ Given the trader's message, classify it into one of these categories:
 - risk_check: asking whether a specific trade fits their portfolio, position sizing — or whether to SELL an existing position (e.g. "Should I sell GOOG?", "Sell my AAPL?", "Can I add $10k TSLA?")
 - signal_archaeology: asking about what predicted a past big move, historical analysis
 - portfolio_overview: asking to see their portfolio, holdings, positions, allocations, or "how is my portfolio doing"
+- lookup_symbol: asking for a ticker symbol by company name (e.g. "What's the ticker for Apple?", "Look up the symbol for Tesla", "What symbol is Microsoft?")
 - general: greeting, general question, unclear, or request that doesn't fit above categories
 
 Also extract parameters from the message:
@@ -66,59 +71,94 @@ def classify_intent_node(state: AgentState) -> dict[str, Any]:
     """Classify the user's intent and extract parameters using Claude."""
     settings = get_settings()
     messages = state.get("messages", [])
+    token_usage = dict(state.get("token_usage") or {})
+    node_latencies = dict(state.get("node_latencies") or {})
+    error_log = list(state.get("error_log") or [])
+    trace_log = list(state.get("trace_log") or [])
 
     if not messages:
+        trace_log.append(make_trace_entry("classify_intent", output_summary="no messages"))
         return {
             "intent": "general",
             "extracted_params": {},
+            "token_usage": token_usage,
+            "node_latencies": node_latencies,
+            "error_log": error_log,
+            "trace_log": trace_log,
         }
 
-    # Get the latest user message
     last_message = messages[-1]
     user_text = last_message.content if hasattr(last_message, "content") else str(last_message)
 
-    try:
-        llm = ChatAnthropic(
-            model="claude-sonnet-4-20250514",
-            api_key=settings.anthropic_api_key,
-            max_tokens=512,
-            temperature=0,
-        )
+    with track_latency() as timing:
+        try:
+            llm = ChatAnthropic(
+                model="claude-sonnet-4-20250514",
+                api_key=settings.anthropic_api_key,
+                max_tokens=512,
+                temperature=0,
+            )
 
-        response = llm.invoke([
-            SystemMessage(content=INTENT_SYSTEM_PROMPT),
-            HumanMessage(content=_build_intent_payload(messages, user_text)),
-        ])
+            response = llm.invoke([
+                SystemMessage(content=INTENT_SYSTEM_PROMPT),
+                HumanMessage(content=_build_intent_payload(messages, user_text)),
+            ])
 
-        # Parse JSON from response
-        response_text = response.content.strip()
-        # Handle potential markdown code blocks
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
+            token_usage["classify_intent"] = extract_token_usage(response)
 
-        parsed = json.loads(response_text)
-        intent = parsed.get("intent", "general")
-        params = parsed.get("params", {})
+            response_text = response.content.strip()
+            if response_text.startswith("```"):
+                response_text = response_text.split("```")[1]
+                if response_text.startswith("json"):
+                    response_text = response_text[4:]
+                response_text = response_text.strip()
 
-        logger.info(f"Classified intent: {intent} with params: {params}")
+            parsed = json.loads(response_text)
+            intent = parsed.get("intent", "general")
+            params = parsed.get("params", {})
 
-        return {
-            "intent": intent,
-            "extracted_params": params,
-        }
+            logger.info(f"Classified intent: {intent} with params: {params}")
 
-    except json.JSONDecodeError as e:
-        logger.warning(f"Failed to parse intent JSON: {e}")
-        return {
-            "intent": "general",
-            "extracted_params": {},
-        }
-    except Exception as e:
-        logger.error(f"Intent classification failed: {e}")
-        return {
-            "intent": "general",
-            "extracted_params": {},
-        }
+            trace_log.append(make_trace_entry(
+                "classify_intent",
+                input_summary=user_text,
+                output_summary=f"intent={intent}",
+                metadata={"params": params},
+            ))
+
+            node_latencies["classify_intent"] = timing.get("elapsed_seconds", 0)
+            return {
+                "intent": intent,
+                "extracted_params": params,
+                "token_usage": token_usage,
+                "node_latencies": node_latencies,
+                "error_log": error_log,
+                "trace_log": trace_log,
+            }
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse intent JSON: {e}")
+            error_log.append(make_error_entry("classify_intent", e, ErrorCategory.PARSE))
+            trace_log.append(make_trace_entry("classify_intent", output_summary=f"parse error: {e}"))
+            node_latencies["classify_intent"] = timing.get("elapsed_seconds", 0)
+            return {
+                "intent": "general",
+                "extracted_params": {},
+                "token_usage": token_usage,
+                "node_latencies": node_latencies,
+                "error_log": error_log,
+                "trace_log": trace_log,
+            }
+        except Exception as e:
+            logger.error(f"Intent classification failed: {e}")
+            error_log.append(make_error_entry("classify_intent", e, ErrorCategory.LLM))
+            trace_log.append(make_trace_entry("classify_intent", output_summary=f"error: {e}"))
+            node_latencies["classify_intent"] = timing.get("elapsed_seconds", 0)
+            return {
+                "intent": "general",
+                "extracted_params": {},
+                "token_usage": token_usage,
+                "node_latencies": node_latencies,
+                "error_log": error_log,
+                "trace_log": trace_log,
+            }

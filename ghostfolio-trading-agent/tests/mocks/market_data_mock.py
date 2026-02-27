@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 # Symbols we provide mock OHLCV for (regime uses SPY, VIX; price_quote uses AAPL, etc.)
@@ -25,17 +25,23 @@ MOCK_LAST_CLOSE = {
 def _make_mock_ohlcv_df(symbol: str, num_days: int = 252) -> pd.DataFrame:
     """Build a DataFrame with Open, High, Low, Close, Volume for indicator computation."""
     base = MOCK_LAST_CLOSE.get(symbol, 100.0)
-    end = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    dates = pd.date_range(end=end, periods=num_days, freq="B")
+    today_utc = pd.Timestamp(datetime.now(timezone.utc).date())
+    dates = pd.date_range(end=today_utc, periods=num_days, freq="B")
+    # Guarantee the last row is today UTC so freshness checks pass
+    if dates[-1] < today_utc:
+        dates = dates.append(pd.DatetimeIndex([today_utc]))
+    actual_len = len(dates)
     np.random.seed(hash(symbol) % 2**32)
-    returns = np.random.randn(num_days) * 0.01
+    returns = np.random.randn(actual_len) * 0.01
     close = base * np.exp(np.cumsum(returns))
     close = np.maximum(close, base * 0.5)
+    # Pin last close to canonical price so ground-truth checks are stable
+    close[-1] = base
     open_ = np.roll(close, 1)
     open_[0] = close[0] * 0.99
-    high = np.maximum(open_, close) * (1 + np.abs(np.random.randn(num_days)) * 0.005)
-    low = np.minimum(open_, close) * (1 - np.abs(np.random.randn(num_days)) * 0.005)
-    volume = (np.random.rand(num_days) * 1e7 + 5e6).astype(int)
+    high = np.maximum(open_, close) * (1 + np.abs(np.random.randn(actual_len)) * 0.005)
+    low = np.minimum(open_, close) * (1 - np.abs(np.random.randn(actual_len)) * 0.005)
+    volume = (np.random.rand(actual_len) * 1e7 + 5e6).astype(int)
     df = pd.DataFrame(
         {
             "Open": open_,

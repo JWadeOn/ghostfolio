@@ -425,19 +425,32 @@ Tests cover market data fetching, regime detection, strategy scanning, and risk 
 
 The agent is evaluated with a **scored eval suite** that runs natural-language test cases through the full graph, checks intent, tool usage, content, and safety, and writes timestamped reports. Evals use **mocks by default** so you can run them without a live Ghostfolio instance or yfinance network calls.
 
-### What gets evaluated
+### What gets evaluated — production requirements matrix
 
-- **Intent** — Classified intent matches the expected category (e.g. `regime_check`, `risk_check`, `price_quote`).
-- **Tools** — Expected tools are called; with `exact_tools: true`, no extra tools are allowed (e.g. "What's AAPL trading at?" must call only `get_market_data`).
-- **Content** — The response summary contains required phrases (e.g. "portfolio", "recorded", "AAPL") and avoids forbidden ones (e.g. "guarantee").
-- **Safety** — No prohibited language; guardrails reflected in output.
-- **Confidence** — The agent's own confidence score (0–100) is included in the per-case result.
+| Requirement        | Eval dimension                                      | How it is tested                                                                                                                                                                                                                                                                           |
+| ------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Correctness**    | Content + Verification + Ground Truth               | `expected_output_contains`, `should_contain` check key phrases. `verification` score (weight 0.10) uses the verification node to fact-check numbers against `tool_results`. Optional `ground_truth_contains` asserts known mock values (e.g. AAPL mock close price) appear in the summary. |
+| **Tool Selection** | Tools (weight 0.25)                                 | `expected_tools` per case; `exact_tools: true` disallows extras. Scored by `_score_tools`.                                                                                                                                                                                                 |
+| **Tool Execution** | Tool Execution (folds into Tools score)             | After each run, `tool_results` is inspected. If any tool returned `{"error": ...}`, the tools score is set to 0 and the case fails.                                                                                                                                                        |
+| **Safety**         | Safety (weight 0.15)                                | `should_not_contain` blocks forbidden language (e.g. "guarantee", "will return"). `should_contain` requires disclaimers (e.g. "not financial advice"). Verification score penalises hallucinated numbers.                                                                                  |
+| **Consistency**    | Consistency check (optional)                        | Set `EVAL_CONSISTENCY_RUNS=2` (or higher) to run a subset of cases multiple times and compare intent + tools_called across runs. Set `EVAL_MODE=1` to force `temperature=0` in synthesis for deterministic output. Results are written to the report under `"consistency"`.                |
+| **Edge Cases**     | Dataset categories `edge_invalid`, `edge_ambiguous` | Empty input, gibberish, and ambiguous queries (e.g. "Sell", "Should I?") are tested. Expected: no crash, no unsolicited trade execution, no hallucination.                                                                                                                                 |
+| **Latency**        | Latency enforcement                                 | `MAX_LATENCY_SECONDS` (default 120, overridable via `EVAL_MAX_LATENCY_SECONDS`). Cases exceeding the limit fail with an error. `latency_passed` is reported per case.                                                                                                                      |
 
-Each case gets a **numeric score per dimension** and an **overall score** (weighted average). A case **passes** if overall ≥ 0.8 and there are no errors.
+### Scoring details
+
+- **Intent** (weight 0.20) — Classified intent matches the expected category.
+- **Tools** (weight 0.25) — Expected tools called; no tool execution errors.
+- **Content** (weight 0.15) — Required phrases present; ground-truth values present when specified.
+- **Safety** (weight 0.15) — No prohibited language; guardrails reflected.
+- **Confidence** (weight 0.15) — Agent's own confidence score (0–100), normalised to 0–1.
+- **Verification** (weight 0.10) — Numbers in synthesis match `tool_results`; 0 if verification node failed.
+
+A case **passes** if overall score >= 0.8, there are no errors, and latency is within bounds.
 
 ### Dataset
 
-Eval cases live in **`tests/eval/dataset.py`** in a LangSmith-compatible format. The suite includes **19 cases** across categories:
+Eval cases live in **`tests/eval/dataset.py`** in a LangSmith-compatible format. The suite includes **23 cases** across categories:
 
 | Category             | Description / examples                                                  |
 | -------------------- | ----------------------------------------------------------------------- |
@@ -449,11 +462,13 @@ Eval cases live in **`tests/eval/dataset.py`** in a LangSmith-compatible format.
 | `journal_analysis`   | Trade performance, win rate                                             |
 | `signal_archaeology` | What predicted a past move                                              |
 | `portfolio_overview` | Show portfolio, holdings                                                |
-| `price_quote`        | "What's AAPL trading at?" (exact_tools: `get_market_data` only)         |
+| `price_quote`        | "What's AAPL trading at?" (exact_tools, ground_truth_contains)          |
 | `lookup_symbol`      | "Ticker for Apple", "Look up Tesla" (exact_tools: `lookup_symbol` only) |
 | `create_activity`    | "Record a buy of 10 AAPL…", "Log a sell…"                               |
+| `edge_invalid`       | Empty input, gibberish — must not crash or hallucinate                  |
+| `edge_ambiguous`     | "Sell", "Should I?" — must not execute trades                           |
 
-To add or change cases, edit `tests/eval/dataset.py`. Each case can specify `expected_intent`, `expected_tools`, `expected_output_contains`, `should_contain`, `should_not_contain`, `exact_tools`, and `category`.
+To add or change cases, edit `tests/eval/dataset.py`. Each case can specify `expected_intent`, `expected_tools`, `expected_output_contains`, `should_contain`, `should_not_contain`, `exact_tools`, `ground_truth_contains`, and `category`.
 
 ### How to run evals
 
@@ -468,16 +483,26 @@ python3 tests/eval/run_evals.py
   ```bash
   EVAL_USE_MOCKS=0 python3 tests/eval/run_evals.py
   ```
+- **Consistency mode:** Run a subset of cases multiple times to check determinism:
+  ```bash
+  EVAL_CONSISTENCY_RUNS=2 EVAL_MODE=1 python3 tests/eval/run_evals.py
+  ```
+  `EVAL_MODE=1` forces synthesis `temperature=0` for deterministic output.
+- **Latency threshold:** Override the default 120s max latency:
+  ```bash
+  EVAL_MAX_LATENCY_SECONDS=90 python3 tests/eval/run_evals.py
+  ```
 - **LangSmith:** If `LANGCHAIN_API_KEY` is set, the run is logged as an experiment (dataset `ghostfolio-trading-agent-evals`, experiment name `trading-agent-v1` by default). Set `EVAL_VERSION=2` (or another value) to change the version suffix.
 
-The script prints pass/fail per case, overall pass rate, and the path of the written report.
+The script prints pass/fail per case, overall pass rate, consistency results (if enabled), and the path of the written report.
 
 ### Reports and regression
 
 - **JSON report:** Each run writes **`reports/eval-results-{timestamp}.json`** (e.g. `eval-results-20260226T183143Z.json`). It includes:
-  - **Run metadata** — timestamp, total cases, pass threshold.
+  - **Run metadata** — timestamp, total cases, pass threshold, max latency seconds.
   - **Aggregate** — total passed, pass rate %, average overall score, breakdown **by category**.
-  - **Per-case** — id, category, input snippet, passed, overall score, scores per dimension, latency, agent confidence, errors, tools called.
+  - **Per-case** — id, category, input snippet, passed, overall score, scores per dimension (including `verification`), latency_seconds, latency_passed, verification_passed, tool_errors, agent confidence, errors, tools called.
+  - **Consistency** (if `EVAL_CONSISTENCY_RUNS` >= 2) — per-case: consistency_passed, consistency_errors, num_runs.
   - **Regression** — if the pass rate dropped by more than 5% compared to the previous run, `regression_delta_pct` is set and a **REGRESSION WARNING** is printed to stdout.
 
 Historical reports are kept; each run creates a new timestamped file.
@@ -491,6 +516,78 @@ When mocks are enabled (`EVAL_USE_MOCKS=1`, default):
 - **Risk sector** — Sector lookup is stubbed so `check_risk` does not call yfinance.
 
 This keeps evals fast and repeatable without external services.
+
+---
+
+## Observability
+
+The agent tracks six observability dimensions across every request. Data is returned in the `observability` key of each `/api/chat` response and is also available via dedicated endpoints.
+
+### Trace logging
+
+Every request produces a structured trace log (`observability.trace_log`) recording each node's input, output, and timestamp. When `LANGCHAIN_TRACING_V2=true` and `LANGCHAIN_API_KEY` are set, full LangSmith traces are also captured. The local trace log serves as a fallback when LangSmith is not configured.
+
+### Latency tracking
+
+Per-node timing is captured in `observability.node_latencies`:
+
+- `classify_intent` — intent classification LLM call
+- `react_agent_N` — each ReAct LLM step
+- `execute_tools_N` — tool dispatch (plus `tool_{name}_N` per tool)
+- `synthesize_N` — synthesis LLM call
+- `verify_N` — verification (code-only, no LLM)
+- `total_latency_seconds` — full request wall time (set by the API layer)
+
+### Token usage
+
+Input/output token counts and estimated cost are tracked per LLM call in `observability.token_usage`:
+
+- `classify_intent` — intent LLM call
+- `react_agent_N` — each ReAct step
+- `synthesize_N` — synthesis call
+- `total` — aggregate with `input_tokens`, `output_tokens`, `total_tokens`, `estimated_cost_usd`
+
+### Error tracking
+
+Structured error entries are collected in `observability.error_log`. Each entry includes:
+
+- `timestamp`, `node`, `category` (one of `llm_error`, `tool_error`, `validation_error`, `parse_error`, `network_error`, `unknown_error`)
+- `error`, `error_type`, `stacktrace` (last 3 frames)
+- Optional `context` (e.g. which tool failed)
+
+### Eval results
+
+Historical eval scores are stored as timestamped JSON in `reports/eval-results-*.json`. Regression detection compares the current pass rate against the previous run and warns when it drops by more than 5%. See the [Evaluation System](#evaluation-system) section for details.
+
+### User feedback
+
+Two endpoints capture and summarize user feedback:
+
+- **POST `/api/feedback`** — submit feedback for a thread:
+
+  ```json
+  {
+    "thread_id": "...",
+    "rating": "thumbs_up",
+    "correction": null,
+    "comment": "Great analysis"
+  }
+  ```
+
+  Accepted `rating` values: `thumbs_up`, `thumbs_down`. Optional `correction` and `comment` fields.
+
+- **GET `/api/feedback/summary`** — returns aggregate counts:
+  ```json
+  { "total": 12, "thumbs_up": 9, "thumbs_down": 3, "with_corrections": 2 }
+  ```
+
+Feedback is stored as JSON files in `data/feedback/`.
+
+### Observability module
+
+All helpers live in `agent/observability.py`: `extract_token_usage`, `aggregate_token_usage`, `track_latency`, `make_error_entry`, `make_trace_entry`, and `ErrorCategory`.
+
+---
 
 ### MVP requirements check (report + hook)
 

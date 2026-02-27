@@ -333,7 +333,8 @@ def trade_guardrails_check(
         for h in holdings:
             h_sectors = h.get("sectors", [])
             for s in h_sectors:
-                if s.get("name", "").lower() == target_sector.lower():
+                sector_name = s.get("name", s) if isinstance(s, dict) else s
+                if isinstance(sector_name, str) and sector_name.lower() == target_sector.lower():
                     sector_weight += _normalize_weight(h.get("weight", 0))
                     break
         proposed_sector = sector_weight + position_size_pct

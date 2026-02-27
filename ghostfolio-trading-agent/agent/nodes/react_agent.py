@@ -12,6 +12,10 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from agent.config import get_settings
 from agent.state import AgentState
 from agent.tools.langchain_tools import get_tools
+from agent.observability import (
+    extract_token_usage, track_latency, make_error_entry, make_trace_entry,
+    ErrorCategory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +26,8 @@ REACT_SYSTEM_PROMPT = """You are a trading intelligence agent with access to the
 Your goal: answer the trader's question by calling the right tools in the right order, then provide a clear final answer.
 
 TOOL GUIDANCE:
+- get_market_data: Call this when discussing current prices, returns, or volatility. For regime_check (market regime, sectors, VIX) and opportunity_scan (scan watchlist, find setups), call get_market_data for the relevant symbols or index in addition to detect_regime or scan_strategies so that specific numbers can be cited.
+- **By intent:** When INTENT HINT is regime_check: you MUST call get_market_data (e.g. symbols SPY or the index/symbols relevant to the question) AND detect_regime. When INTENT HINT is opportunity_scan: you MUST call get_market_data for the symbols you will discuss AND scan_strategies. When INTENT HINT is risk_check: you MUST call get_portfolio_snapshot and trade_guardrails_check; for "can I buy $X", "add to position", or "should I sell [symbol]" also call get_market_data for that symbol.
 - portfolio_guardrails_check: Use for "What's my portfolio risk?", "Am I within my limits?", "Portfolio health check". No arguments needed.
 - trade_guardrails_check: Use for "Can I buy $10k of TSLA?", "Should I sell GOOG?", "Is this trade within my limits?". Requires symbol and side (buy/sell).
 - portfolio_analysis: Use for per-account analysis, allocation breakdown, or detailed performance. Omit account_id for the full portfolio.
@@ -79,8 +85,13 @@ def react_agent_node(state: AgentState) -> dict[str, Any]:
     intent = state.get("intent", "general")
     extracted_params = state.get("extracted_params", {})
     react_step = state.get("react_step", 0)
+    token_usage = dict(state.get("token_usage") or {})
+    node_latencies = dict(state.get("node_latencies") or {})
+    error_log = list(state.get("error_log") or [])
+    trace_log = list(state.get("trace_log") or [])
 
     context_block = _build_context_block(state)
+    step_key = f"react_agent_{react_step}"
 
     system_text = REACT_SYSTEM_PROMPT.format(
         context_block=context_block,
@@ -92,37 +103,64 @@ def react_agent_node(state: AgentState) -> dict[str, Any]:
         system_text += FINAL_STEP_ADDENDUM
 
     system_msg = SystemMessage(content=system_text)
-
     llm_messages = [system_msg] + messages
 
-    try:
-        llm = ChatAnthropic(
-            model="claude-sonnet-4-20250514",
-            api_key=settings.anthropic_api_key,
-            max_tokens=2048,
-            temperature=0,
-        )
+    with track_latency() as timing:
+        try:
+            llm = ChatAnthropic(
+                model="claude-sonnet-4-20250514",
+                api_key=settings.anthropic_api_key,
+                max_tokens=2048,
+                temperature=0,
+            )
 
-        if react_step < MAX_REACT_STEPS:
-            tools = get_tools()
-            llm_with_tools = llm.bind_tools(tools)
-        else:
-            llm_with_tools = llm
+            if react_step < MAX_REACT_STEPS:
+                tools = get_tools()
+                llm_with_tools = llm.bind_tools(tools)
+            else:
+                llm_with_tools = llm
 
-        response: AIMessage = llm_with_tools.invoke(llm_messages)
-        logger.info(
-            "ReAct step %d: tool_calls=%d, content_len=%d",
-            react_step,
-            len(response.tool_calls) if hasattr(response, "tool_calls") and response.tool_calls else 0,
-            len(response.content) if response.content else 0,
-        )
+            response: AIMessage = llm_with_tools.invoke(llm_messages)
+            token_usage[step_key] = extract_token_usage(response)
 
-        return {"messages": [response]}
+            num_tool_calls = len(response.tool_calls) if hasattr(response, "tool_calls") and response.tool_calls else 0
+            logger.info(
+                "ReAct step %d: tool_calls=%d, content_len=%d",
+                react_step,
+                num_tool_calls,
+                len(response.content) if response.content else 0,
+            )
 
-    except Exception as e:
-        logger.error("ReAct agent LLM call failed: %s", e)
-        error_msg = AIMessage(content=f"I encountered an error during analysis: {e}")
-        return {"messages": [error_msg]}
+            tool_names = [tc["name"] for tc in (response.tool_calls or [])] if response.tool_calls else []
+            trace_log.append(make_trace_entry(
+                step_key,
+                input_summary=f"step={react_step}, intent={intent}",
+                output_summary=f"tool_calls={tool_names}" if tool_names else "final_answer",
+                metadata={"tool_calls": num_tool_calls},
+            ))
+
+            node_latencies[step_key] = timing.get("elapsed_seconds", 0)
+            return {
+                "messages": [response],
+                "token_usage": token_usage,
+                "node_latencies": node_latencies,
+                "error_log": error_log,
+                "trace_log": trace_log,
+            }
+
+        except Exception as e:
+            logger.error("ReAct agent LLM call failed: %s", e)
+            error_log.append(make_error_entry(step_key, e, ErrorCategory.LLM))
+            trace_log.append(make_trace_entry(step_key, output_summary=f"error: {e}"))
+            node_latencies[step_key] = timing.get("elapsed_seconds", 0)
+            error_msg = AIMessage(content=f"I encountered an error during analysis: {e}")
+            return {
+                "messages": [error_msg],
+                "token_usage": token_usage,
+                "node_latencies": node_latencies,
+                "error_log": error_log,
+                "trace_log": trace_log,
+            }
 
 
 def route_after_react(state: AgentState) -> str:

@@ -23,6 +23,10 @@ def _make_initial_state(message: str) -> dict:
         "verification_result": None,
         "verification_attempts": 0,
         "response": None,
+        "token_usage": {},
+        "node_latencies": {},
+        "error_log": [],
+        "trace_log": [],
     }
 
 

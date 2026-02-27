@@ -101,4 +101,11 @@ def create_activity(
         payload["comment"] = str(comment).strip()
 
     result = client.create_order(payload)
+    if isinstance(result, dict) and "error" not in result:
+        qty = result.get("quantity", payload.get("quantity", 0)) or 0
+        price = result.get("unitPrice", payload.get("unitPrice", 0)) or 0
+        if qty and price:
+            total = round(float(qty) * float(price), 2)
+            result["total_value"] = total
+            result["total_cost"] = total
     return result
