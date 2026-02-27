@@ -116,6 +116,7 @@ def _build_initial_state(use_mocks: bool = True) -> dict:
         "tools_called": [],
         "react_step": 0,
         "synthesis": None,
+        "skip_synthesis": False,
         "verification_result": None,
         "verification_attempts": 0,
         "response": None,

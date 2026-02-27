@@ -39,6 +39,7 @@ def build_agent_graph(checkpointer: BaseCheckpointSaver | None = None):
     graph.add_conditional_edges("react_agent", route_after_react, {
         "execute_tools": "execute_tools",
         "synthesize": "synthesize",
+        "verify": "verify",
     })
 
     graph.add_edge("execute_tools", "react_agent")

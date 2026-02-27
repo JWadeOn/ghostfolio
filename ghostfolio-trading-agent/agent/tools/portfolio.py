@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from agent.ghostfolio_client import GhostfolioClient
@@ -63,9 +64,13 @@ def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, 
     if client is None:
         client = GhostfolioClient()
 
-    holdings_data = client.get_holdings()
-    performance_data = client.get_performance()
-    accounts_data = client.get_accounts()
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        h_future = executor.submit(client.get_holdings)
+        p_future = executor.submit(client.get_performance)
+        a_future = executor.submit(client.get_accounts)
+        holdings_data = h_future.result()
+        performance_data = p_future.result()
+        accounts_data = a_future.result()
 
     # Check for errors
     errors = []

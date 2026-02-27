@@ -32,6 +32,7 @@ class AgentState(TypedDict):
 
     # Synthesis and verification
     synthesis: str | None
+    skip_synthesis: bool
     verification_result: dict | None
     verification_attempts: int
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any
 
@@ -64,6 +65,25 @@ GHOSTFOLIO_TOOLS = frozenset({
 })
 
 
+def _execute_single_tool(
+    tool_fn,
+    tool_name: str,
+    tool_args: dict,
+    tool_call_id: str,
+) -> tuple[str, Any, float, Exception | None, str]:
+    """Execute a single tool and return (tool_name, result, timing, error, tool_call_id)."""
+    logger.info("Executing tool: %s with args: %s", tool_name, tool_args)
+    t0 = time.perf_counter()
+    try:
+        result = tool_fn(**tool_args)
+        elapsed = round(time.perf_counter() - t0, 4)
+        return (tool_name, result, elapsed, None, tool_call_id)
+    except Exception as e:
+        elapsed = round(time.perf_counter() - t0, 4)
+        logger.error("Tool %s failed: %s", tool_name, e)
+        return (tool_name, {"error": str(e)}, elapsed, e, tool_call_id)
+
+
 def execute_tools_node(state: AgentState) -> dict[str, Any]:
     """Execute tool_calls from the last AIMessage and return ToolMessages + updated state."""
     messages = state.get("messages", [])
@@ -89,86 +109,104 @@ def execute_tools_node(state: AgentState) -> dict[str, Any]:
     if not isinstance(last_msg, AIMessage) or not getattr(last_msg, "tool_calls", None):
         return {"react_step": react_step + 1}
 
-    ghostfolio_client = None
-    if ghostfolio_token and GHOSTFOLIO_TOOLS:
-        try:
-            ghostfolio_client = GhostfolioClient(access_token=ghostfolio_token)
-        except Exception as e:
-            logger.warning("Failed to create Ghostfolio client from request token: %s", e)
+    # Collect tool call specs preserving order (for deterministic ToolMessage ordering)
+    tool_call_specs = []
+    for tc in last_msg.tool_calls:
+        tool_name = tc["name"]
+        tool_args = dict(tc.get("args", {}))
+        tool_call_id = tc["id"]
 
-    new_messages = []
+        tool_fn = TOOL_REGISTRY.get(tool_name)
+        if not tool_fn:
+            tool_call_specs.append((tool_name, tool_args, tool_call_id, None))
+            continue
+
+        if tool_name == "scan_strategies" and "regime" not in tool_args and regime:
+            tool_args["regime"] = regime
+
+        # Each parallel tool gets its own Ghostfolio client (httpx.Client is not thread-safe)
+        if tool_name in GHOSTFOLIO_TOOLS and ghostfolio_token:
+            try:
+                tool_args["client"] = GhostfolioClient(access_token=ghostfolio_token)
+            except Exception as e:
+                logger.warning("Failed to create Ghostfolio client for %s: %s", tool_name, e)
+
+        # Inject previously-fetched data to avoid redundant API calls
+        if tool_name in ("portfolio_guardrails_check", "trade_guardrails_check"):
+            if "get_portfolio_snapshot" in tool_results:
+                tool_args["portfolio_data"] = tool_results["get_portfolio_snapshot"]
+        if tool_name == "trade_guardrails_check":
+            if "get_market_data" in tool_results:
+                tool_args["market_data"] = tool_results["get_market_data"]
+
+        tool_call_specs.append((tool_name, tool_args, tool_call_id, tool_fn))
+
+    # Execute tools in parallel using ThreadPoolExecutor
+    # Maintain insertion order for ToolMessage responses
+    results_by_call_id: dict[str, tuple[str, Any, float, Exception | None]] = {}
     tool_timings: dict[str, float] = {}
+    clients_to_close: list[GhostfolioClient] = []
 
     with track_latency() as step_timing:
+        # Track per-tool clients for cleanup
+        for _, args, _, _ in tool_call_specs:
+            client = args.get("client")
+            if isinstance(client, GhostfolioClient):
+                clients_to_close.append(client)
+
         try:
-            for tc in last_msg.tool_calls:
-                tool_name = tc["name"]
-                tool_args = dict(tc.get("args", {}))
-                tool_call_id = tc["id"]
-
-                tool_fn = TOOL_REGISTRY.get(tool_name)
-                if not tool_fn:
-                    logger.error("Unknown tool: %s", tool_name)
-                    result = {"error": f"Unknown tool: {tool_name}"}
-                    tool_results[tool_name] = result
-                    error_log.append(make_error_entry(
-                        step_key, ValueError(f"Unknown tool: {tool_name}"),
-                        ErrorCategory.TOOL, context={"tool": tool_name},
-                    ))
-                    new_messages.append(
-                        ToolMessage(content=json.dumps(result, default=str), tool_call_id=tool_call_id)
+            # Handle unknown tools immediately; submit valid tools to executor
+            futures_map = {}
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                for tool_name, tool_args, tool_call_id, tool_fn in tool_call_specs:
+                    if tool_fn is None:
+                        result = {"error": f"Unknown tool: {tool_name}"}
+                        results_by_call_id[tool_call_id] = (tool_name, result, 0.0, ValueError(f"Unknown tool: {tool_name}"))
+                        continue
+                    future = executor.submit(
+                        _execute_single_tool, tool_fn, tool_name, tool_args, tool_call_id
                     )
-                    continue
+                    futures_map[future] = tool_call_id
 
-                if tool_name == "scan_strategies" and "regime" not in tool_args and regime:
-                    tool_args["regime"] = regime
-
-                if tool_name in GHOSTFOLIO_TOOLS and ghostfolio_client is not None:
-                    tool_args["client"] = ghostfolio_client
-
-                try:
-                    logger.info("Executing tool: %s with args: %s", tool_name, tool_args)
-                    t0 = time.perf_counter()
-                    result = tool_fn(**tool_args)
-                    tool_timings[tool_name] = round(time.perf_counter() - t0, 4)
-
-                    tool_results[tool_name] = result
-                    tools_called.append(tool_name)
-
-                    now = datetime.now(timezone.utc).isoformat()
-                    if tool_name == "detect_regime":
-                        regime = result
-                        regime_timestamp = now
-                    elif tool_name == "get_portfolio_snapshot":
-                        portfolio = result
-                        portfolio_timestamp = now
-
-                    result_str = json.dumps(result, default=str)
-                    if len(result_str) > 8000:
-                        result_str = result_str[:8000] + "... (truncated)"
-
-                    new_messages.append(
-                        ToolMessage(content=result_str, tool_call_id=tool_call_id)
-                    )
-
-                except Exception as e:
-                    logger.error("Tool %s failed: %s", tool_name, e)
-                    error_result = {"error": str(e)}
-                    tool_results[tool_name] = error_result
-                    tools_called.append(tool_name)
-                    error_log.append(make_error_entry(
-                        step_key, e, ErrorCategory.TOOL, context={"tool": tool_name},
-                    ))
-                    new_messages.append(
-                        ToolMessage(content=json.dumps(error_result), tool_call_id=tool_call_id)
-                    )
+                for future in as_completed(futures_map):
+                    tool_name, result, elapsed, err, tcid = future.result()
+                    results_by_call_id[tcid] = (tool_name, result, elapsed, err)
 
         finally:
-            if ghostfolio_client is not None:
+            for client in clients_to_close:
                 try:
-                    ghostfolio_client.close()
+                    client.close()
                 except Exception:
                     pass
+
+    # Build ToolMessages in the original tool_call order
+    new_messages = []
+    for _, _, tool_call_id, _ in tool_call_specs:
+        tool_name, result, elapsed, err = results_by_call_id[tool_call_id]
+        tool_timings[tool_name] = elapsed
+        tool_results[tool_name] = result
+        tools_called.append(tool_name)
+
+        if err is not None:
+            error_log.append(make_error_entry(
+                step_key, err, ErrorCategory.TOOL, context={"tool": tool_name},
+            ))
+
+        now_ts = datetime.now(timezone.utc).isoformat()
+        if tool_name == "detect_regime" and err is None:
+            regime = result
+            regime_timestamp = now_ts
+        elif tool_name == "get_portfolio_snapshot" and err is None:
+            portfolio = result
+            portfolio_timestamp = now_ts
+
+        result_str = json.dumps(result, default=str)
+        if len(result_str) > 8000:
+            result_str = result_str[:8000] + "... (truncated)"
+
+        new_messages.append(
+            ToolMessage(content=result_str, tool_call_id=tool_call_id)
+        )
 
     node_latencies[step_key] = step_timing.get("elapsed_seconds", 0)
     for tn, dur in tool_timings.items():

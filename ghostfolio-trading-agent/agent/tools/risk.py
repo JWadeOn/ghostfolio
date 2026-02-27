@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from functools import lru_cache
 from typing import Any
 
 from agent.tools.portfolio import get_portfolio_snapshot
@@ -18,6 +19,7 @@ MAX_CORRELATION = 0.7
 DEFAULT_STOP_LOSS_PCT = 2.0
 
 
+@lru_cache(maxsize=256)
 def _get_sector(symbol: str) -> str | None:
     """Get sector for a symbol from yfinance (imported lazily to avoid numpy SIGFPE on macOS)."""
     try:
@@ -66,12 +68,13 @@ def _compute_hold_period(symbol: str, client: GhostfolioClient | None) -> int | 
 
 def portfolio_guardrails_check(
     client: GhostfolioClient | None = None,
+    portfolio_data: dict | None = None,
 ) -> dict[str, Any]:
     """Assess portfolio-level risk: concentration, cash buffer, diversification.
 
     No symbol or trade amount — this is a health check on the portfolio itself.
     """
-    portfolio = get_portfolio_snapshot(client)
+    portfolio = portfolio_data or get_portfolio_snapshot(client)
 
     if isinstance(portfolio, dict) and "error" in portfolio and not portfolio.get("partial"):
         return {"error": portfolio["error"], "passed": False}
@@ -281,13 +284,15 @@ def trade_guardrails_check(
     position_size_pct: float | None = None,
     dollar_amount: float | None = None,
     client: GhostfolioClient | None = None,
+    portfolio_data: dict | None = None,
+    market_data: dict | None = None,
 ) -> dict[str, Any]:
     """Check if a proposed buy or sell fits portfolio guardrails.
 
     For buys: position size, sector, correlation, cash, suggested size, stop loss.
     For sells: reasons to sell/hold, P&L, hold period, stop loss, portfolio after.
     """
-    portfolio = get_portfolio_snapshot(client)
+    portfolio = portfolio_data or get_portfolio_snapshot(client)
 
     if isinstance(portfolio, dict) and "error" in portfolio and not portfolio.get("partial"):
         return {"error": portfolio["error"], "passed": False}
@@ -351,7 +356,7 @@ def trade_guardrails_check(
     if holding_symbols:
         all_syms = [symbol] + holding_symbols[:10]
         try:
-            data = get_market_data(all_syms, period="30d")
+            data = market_data if market_data else get_market_data(all_syms, period="30d")
             closes: dict[str, dict] = {}
             for sym in all_syms:
                 sym_data = data.get(sym, [])
@@ -407,7 +412,7 @@ def trade_guardrails_check(
 
     stop_loss_level = None
     try:
-        md = get_market_data([symbol], period="5d")
+        md = market_data if market_data else get_market_data([symbol], period="5d")
         sym_data = md.get(symbol, [])
         if isinstance(sym_data, list) and sym_data:
             current_price = sym_data[-1].get("close", 0)
