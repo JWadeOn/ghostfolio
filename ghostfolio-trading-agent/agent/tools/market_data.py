@@ -74,10 +74,43 @@ def _cache_key(symbols: list[str], period: str, interval: str) -> tuple:
 def _fetch_with_retry(
     symbols: list[str], period: str, interval: str, max_retries: int = 3
 ) -> dict[str, pd.DataFrame]:
-    """Fetch OHLCV data from yfinance with exponential backoff retry."""
+    """Fetch OHLCV data from yfinance with batch download and fallback to per-symbol retry."""
     results: dict[str, pd.DataFrame] = {}
 
-    for symbol in symbols:
+    if not symbols:
+        return results
+
+    # Try batch download first (single HTTP request for all symbols)
+    try:
+        if len(symbols) == 1:
+            df = yf.download(symbols[0], period=period, interval=interval, progress=False, threads=True)
+            if not df.empty:
+                results[symbols[0]] = df
+            else:
+                results[symbols[0]] = pd.DataFrame()
+            return results
+
+        df = yf.download(symbols, period=period, interval=interval, group_by="ticker", progress=False, threads=True)
+        if not df.empty:
+            for symbol in symbols:
+                try:
+                    sym_df = df[symbol] if symbol in df.columns.get_level_values(0) else pd.DataFrame()
+                    if not sym_df.empty:
+                        sym_df = sym_df.dropna(how="all")
+                    results[symbol] = sym_df if not sym_df.empty else pd.DataFrame()
+                except (KeyError, TypeError):
+                    results[symbol] = pd.DataFrame()
+            missing = [s for s in symbols if s not in results or results[s].empty]
+            if not missing:
+                return results
+        else:
+            missing = symbols
+    except Exception as e:
+        logger.warning("Batch yfinance download failed, falling back to per-symbol: %s", e)
+        missing = symbols
+
+    # Fallback: per-symbol fetch with retry for any symbols that failed in batch
+    for symbol in missing:
         last_err = None
         for attempt in range(max_retries):
             try:
@@ -85,7 +118,7 @@ def _fetch_with_retry(
                 df = ticker.history(period=period, interval=interval)
                 if df.empty:
                     last_err = f"No data returned for {symbol}"
-                    break  # Don't retry if symbol is invalid/delisted
+                    break
                 results[symbol] = df
                 last_err = None
                 break
@@ -98,7 +131,7 @@ def _fetch_with_retry(
                     )
                     time.sleep(wait)
         if last_err:
-            results[symbol] = pd.DataFrame()  # Empty signals error
+            results[symbol] = pd.DataFrame()
             logger.error(f"Failed to fetch {symbol}: {last_err}")
 
     return results

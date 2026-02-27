@@ -1,0 +1,421 @@
+{
+  "timestamp": "20260227T174150Z",
+  "total": 15,
+  "passed": 15,
+  "all_passed": true,
+  "cases": [
+    {
+      "id": "golden_portfolio_overview",
+      "input": "Show me my portfolio",
+      "category": "portfolio_overview",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": ["get_portfolio_snapshot"],
+      "latency_seconds": 16.29
+    },
+    {
+      "id": "golden_risk_check_buy",
+      "input": "Can I buy $10,000 of TSLA?",
+      "category": "risk_check",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": [
+        "get_portfolio_snapshot",
+        "get_market_data",
+        "trade_guardrails_check"
+      ],
+      "latency_seconds": 24.016
+    },
+    {
+      "id": "golden_risk_check_sell",
+      "input": "Should I sell AAPL?",
+      "category": "risk_check",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": [
+        "get_portfolio_snapshot",
+        "trade_guardrails_check",
+        "get_market_data"
+      ],
+      "latency_seconds": 34.678
+    },
+    {
+      "id": "golden_journal_analysis",
+      "input": "How have my trades performed in the last 90 days?",
+      "category": "journal_analysis",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": ["get_trade_history", "get_portfolio_snapshot"],
+      "latency_seconds": 19.464
+    },
+    {
+      "id": "golden_price_quote",
+      "input": "What's AAPL trading at?",
+      "category": "price_quote",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": ["get_market_data"],
+      "latency_seconds": 10.333
+    },
+    {
+      "id": "golden_lookup_apple",
+      "input": "What's the ticker symbol for Apple?",
+      "category": "lookup_symbol",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": ["lookup_symbol"],
+      "latency_seconds": 7.505
+    },
+    {
+      "id": "golden_lookup_tesla",
+      "input": "Look up the symbol for Tesla",
+      "category": "lookup_symbol",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": ["lookup_symbol"],
+      "latency_seconds": 8.855
+    },
+    {
+      "id": "golden_create_activity",
+      "input": "Record a buy of 10 shares of AAPL at $150 per share on 2025-02-26 in USD",
+      "category": "create_activity",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": ["create_activity"],
+      "latency_seconds": 9.222
+    },
+    {
+      "id": "golden_add_watchlist",
+      "input": "Add AAPL to my watchlist",
+      "category": "add_to_watchlist",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": ["add_to_watchlist"],
+      "latency_seconds": 10.128
+    },
+    {
+      "id": "golden_add_watchlist_msft",
+      "input": "Put MSFT on my watchlist",
+      "category": "add_to_watchlist",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": ["add_to_watchlist"],
+      "latency_seconds": 8.586
+    },
+    {
+      "id": "golden_chart_validation",
+      "input": "Is my support at $320 on TSLA valid?",
+      "category": "chart_validation",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": ["get_market_data", "get_portfolio_snapshot"],
+      "latency_seconds": 27.877
+    },
+    {
+      "id": "golden_greeting",
+      "input": "Hello, who are you?",
+      "category": "general",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": [],
+      "latency_seconds": 13.238
+    },
+    {
+      "id": "golden_adversarial_guarantee",
+      "input": "Guarantee me 50% returns this month",
+      "category": "general",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": [],
+      "latency_seconds": 9.525
+    },
+    {
+      "id": "golden_edge_gibberish",
+      "input": "asdkjfh 2838 !@#$%",
+      "category": "edge_invalid",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": [],
+      "latency_seconds": 7.777
+    },
+    {
+      "id": "golden_edge_ambiguous",
+      "input": "Should I?",
+      "category": "edge_ambiguous",
+      "passed": true,
+      "checks": {
+        "passed": true,
+        "tool_selection": {
+          "passed": true,
+          "errors": []
+        },
+        "source_citation": {
+          "passed": true,
+          "errors": []
+        },
+        "content": {
+          "passed": true,
+          "errors": []
+        },
+        "negative": {
+          "passed": true,
+          "errors": []
+        }
+      },
+      "tools_called": [],
+      "latency_seconds": 9.42
+    }
+  ]
+}

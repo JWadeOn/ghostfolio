@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 MAX_REACT_STEPS = 10
 
+SIMPLE_INTENTS = frozenset({"general", "lookup_symbol", "edge_invalid"})
+
 REACT_SYSTEM_PROMPT = """You are a trading intelligence agent for **Phase 1: long-term investors only**. Your scope is portfolio-level questions: health, trade evaluation, performance review, tax implications, opportunity assessment, and compliance. Do NOT use strategy scanning, regime detection, or technical-setup scanning — those are out of scope for this phase.
 
 PRIORITY TOOLS (use these to answer the user):
@@ -71,6 +73,17 @@ CLARIFICATION RULES — ASK BEFORE CALLING TOOLS:
 RECORDING TRANSACTIONS: When the user asks to "record a transaction", "log a trade", "add a buy/sell", or "save a transaction", use create_activity. If symbol, quantity, unit_price, date, or currency is missing, ask once for those details, then call create_activity with activity_type "BUY" or "SELL". You may call get_portfolio_snapshot first to get account_id if needed.
 
 WATCHLIST: When the user asks to "add X to my watchlist", "put Y on my watchlist", or "track Z", use add_to_watchlist(symbol). If no symbol is given, ask which symbol to add.
+
+EFFICIENCY RULES — MINIMIZE ROUND-TRIPS:
+- Call ALL tools you know you'll need in a SINGLE step whenever possible. Do not call them one at a time across separate steps.
+- For **portfolio health**: call get_portfolio_snapshot AND portfolio_guardrails_check IN THE SAME STEP.
+- For **trade evaluation** ("Should I buy/sell X?"): call get_portfolio_snapshot, get_market_data(symbol), AND trade_guardrails_check(symbol, side) ALL IN ONE STEP.
+- For **performance review**: call get_portfolio_snapshot AND get_trade_history IN THE SAME STEP.
+- For **tax implications**: call get_portfolio_snapshot, get_trade_history, AND tax_estimate IN THE SAME STEP (if you have all required args).
+- For **compliance**: call compliance_check AND get_portfolio_snapshot (or get_trade_history) IN THE SAME STEP.
+- For **multi_step**: call ALL relevant tools from every area IN THE SAME STEP.
+- Only use multiple steps when a later tool DEPENDS on the result of an earlier one (e.g., you need portfolio data to determine which symbol to look up).
+- Fewer steps = faster response. Aim for 1-2 steps maximum.
 
 RULES:
 - Call tools as needed. You may call one or more tools per step and may take multiple steps.
@@ -180,9 +193,18 @@ def react_agent_node(state: AgentState) -> dict[str, Any]:
                 metadata={"tool_calls": num_tool_calls},
             ))
 
+            # Skip synthesis for simple intents when the ReAct agent produced a final text answer
+            skip_synthesis = False
+            synthesis = None
+            if num_tool_calls == 0 and intent in SIMPLE_INTENTS and response.content:
+                skip_synthesis = True
+                synthesis = response.content.strip()
+
             node_latencies[step_key] = timing.get("elapsed_seconds", 0)
             return {
                 "messages": [response],
+                "skip_synthesis": skip_synthesis,
+                "synthesis": synthesis,
                 "token_usage": token_usage,
                 "node_latencies": node_latencies,
                 "error_log": error_log,
@@ -222,5 +244,8 @@ def route_after_react(state: AgentState) -> str:
 
     if has_tool_calls and react_step < MAX_REACT_STEPS:
         return "execute_tools"
+
+    if state.get("skip_synthesis"):
+        return "verify"
 
     return "synthesize"
