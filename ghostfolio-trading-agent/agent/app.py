@@ -13,12 +13,13 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from agent.config import get_settings
+from agent.input_validation import MAX_MESSAGE_LENGTH, validate_chat_message
 from agent.ghostfolio_client import GhostfolioClient
 from agent.graph import build_agent_graph
 from agent.persistence import (
@@ -106,7 +107,7 @@ app.add_middleware(
 
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(..., max_length=MAX_MESSAGE_LENGTH)
     thread_id: str | None = None
     access_token: str | None = None
 
@@ -141,12 +142,17 @@ def _make_json_serializable(obj: Any) -> Any:
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Main chat endpoint — processes natural language queries through the agent."""
+    try:
+        message = validate_chat_message(request.message)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     thread_id = request.thread_id or str(uuid.uuid4())
     access_token = (request.access_token or "").strip() or None
 
     # Per-request fields only; regime/portfolio are restored by the checkpointer
     input_state = {
-        "messages": [HumanMessage(content=request.message)],
+        "messages": [HumanMessage(content=message)],
         "intent": "",
         "extracted_params": {},
         "ghostfolio_access_token": access_token,
