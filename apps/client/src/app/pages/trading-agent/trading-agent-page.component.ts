@@ -22,6 +22,7 @@ import {
   chevronDownOutline,
   chevronUpOutline,
   personOutline,
+  receiptOutline,
   sendOutline,
   shieldCheckmarkOutline,
   sparklesOutline,
@@ -117,20 +118,20 @@ export class GfTradingAgentPageComponent implements OnInit, AfterViewChecked {
 
   public readonly suggestedPrompts: SuggestedPrompt[] = [
     {
-      text: $localize`What does my portfolio look like?`,
+      text: $localize`Am I too concentrated anywhere?`,
       icon: 'wallet-outline'
     },
     {
-      text: $localize`Can I buy $10k of TSLA?`,
+      text: $localize`Should I buy more AAPL given my portfolio?`,
       icon: 'shield-checkmark-outline'
     },
     {
-      text: $localize`What's the current market regime?`,
+      text: $localize`How have my investments performed this year?`,
       icon: 'trending-up-outline'
     },
     {
-      text: $localize`Scan for trading opportunities`,
-      icon: 'checkmark-circle-outline'
+      text: $localize`What's my tax exposure if I sell?`,
+      icon: 'receipt-outline'
     }
   ];
 
@@ -162,6 +163,7 @@ export class GfTradingAgentPageComponent implements OnInit, AfterViewChecked {
       chevronDownOutline,
       chevronUpOutline,
       personOutline,
+      receiptOutline,
       sendOutline,
       shieldCheckmarkOutline,
       sparklesOutline,
