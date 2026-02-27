@@ -95,6 +95,24 @@ class GhostfolioClient:
         except Exception as e:
             return {"error": str(e)}
 
+    def _delete(self, path: str, params: dict | None = None) -> Any:
+        """Make a DELETE request. Returns JSON or number (e.g. delete count)."""
+        try:
+            resp = self._client.delete(path, params=params)
+            resp.raise_for_status()
+            if resp.headers.get("content-type", "").startswith("application/json"):
+                return resp.json()
+            text = (resp.text or "").strip()
+            if text.isdigit():
+                return int(text)
+            return text or None
+        except httpx.ConnectError:
+            return {"error": "Ghostfolio is unreachable. Is it running?"}
+        except httpx.HTTPStatusError as e:
+            return {"error": f"API returned {e.response.status_code}: {e.response.text}"}
+        except Exception as e:
+            return {"error": str(e)}
+
     # --- Portfolio ---
 
     def get_holdings(self, range_: str = "max", accounts: str | None = None) -> Any:
@@ -123,6 +141,27 @@ class GhostfolioClient:
     def get_accounts(self) -> Any:
         return self._get("/api/v1/account")
 
+    def create_account(
+        self,
+        name: str,
+        currency: str = "USD",
+        balance: float = 0,
+        comment: str | None = None,
+    ) -> Any:
+        """Create an account via POST /api/v1/account.
+
+        Payload matches CreateAccountDto: name, currency, balance; optional comment.
+        Returns the created account (with id) or error dict.
+        """
+        payload: dict[str, Any] = {
+            "name": name,
+            "currency": currency,
+            "balance": balance,
+        }
+        if comment is not None:
+            payload["comment"] = comment
+        return self._post("/api/v1/account", json_body=payload)
+
     # --- Orders ---
 
     def get_orders(self, **filters) -> Any:
@@ -137,10 +176,42 @@ class GhostfolioClient:
         """
         return self._post("/api/v1/order", json_body=payload)
 
+    def delete_orders(self, accounts: str | None = None, **params) -> Any:
+        """Delete orders for the authenticated user via DELETE /api/v1/order.
+
+        Optional query params: accounts, assetClasses, dataSource, symbol, tags.
+        If no params, deletes all orders for the user. Returns deleted count or error dict.
+        """
+        if accounts is not None:
+            params["accounts"] = accounts
+        return self._delete("/api/v1/order", params=params if params else None)
+
     # --- Watchlist ---
 
     def get_watchlist(self) -> Any:
         return self._get("/api/v1/watchlist")
+
+    def create_watchlist_item(self, data_source: str, symbol: str) -> Any:
+        """Add a symbol to the user's watchlist via POST /api/v1/watchlist.
+
+        Payload matches CreateWatchlistItemDto: dataSource, symbol.
+        Symbol profile must already exist (e.g. from a MANUAL order). Returns response or error dict.
+        """
+        try:
+            resp = self._client.post(
+                "/api/v1/watchlist",
+                json={"dataSource": data_source, "symbol": symbol},
+            )
+            resp.raise_for_status()
+            if resp.content and resp.content.strip():
+                return resp.json()
+            return {}
+        except httpx.ConnectError:
+            return {"error": "Ghostfolio is unreachable. Is it running?"}
+        except httpx.HTTPStatusError as e:
+            return {"error": f"API returned {e.response.status_code}: {e.response.text}"}
+        except Exception as e:
+            return {"error": str(e)}
 
     # --- Symbols ---
 

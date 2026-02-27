@@ -1,0 +1,609 @@
+{
+  "run_metadata": {
+    "timestamp": "20260227T042721Z",
+    "total_cases": 19,
+    "pass_threshold": 0.8,
+    "target_pass_rate_pct": 80,
+    "target_met": false,
+    "max_latency_seconds": 120.0
+  },
+  "aggregate": {
+    "total": 19,
+    "passed": 5,
+    "pass_rate_pct": 26.3,
+    "avg_overall_score": 0.5592,
+    "by_category": {
+      "risk_check": {
+        "total": 4,
+        "passed": 0,
+        "avg_score": 0.3625,
+        "avg_intent": 0.0,
+        "avg_tools": 0.0,
+        "avg_content": 0.25,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.5,
+        "avg_verification": 1.0
+      },
+      "general": {
+        "total": 2,
+        "passed": 1,
+        "avg_score": 0.8500000000000001,
+        "avg_intent": 1.0,
+        "avg_tools": 1.0,
+        "avg_content": 0.5,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.5,
+        "avg_verification": 1.0
+      },
+      "chart_validation": {
+        "total": 1,
+        "passed": 0,
+        "avg_score": 0.475,
+        "avg_intent": 0.0,
+        "avg_tools": 0.0,
+        "avg_content": 1.0,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.5,
+        "avg_verification": 1.0
+      },
+      "journal_analysis": {
+        "total": 1,
+        "passed": 0,
+        "avg_score": 0.325,
+        "avg_intent": 0.0,
+        "avg_tools": 0.0,
+        "avg_content": 0.0,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.5,
+        "avg_verification": 1.0
+      },
+      "signal_archaeology": {
+        "total": 1,
+        "passed": 0,
+        "avg_score": 0.475,
+        "avg_intent": 0.0,
+        "avg_tools": 0.0,
+        "avg_content": 1.0,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.5,
+        "avg_verification": 1.0
+      },
+      "portfolio_overview": {
+        "total": 1,
+        "passed": 0,
+        "avg_score": 0.325,
+        "avg_intent": 0.0,
+        "avg_tools": 0.0,
+        "avg_content": 0.0,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.5,
+        "avg_verification": 1.0
+      },
+      "price_quote": {
+        "total": 1,
+        "passed": 0,
+        "avg_score": 0.475,
+        "avg_intent": 0.0,
+        "avg_tools": 0.0,
+        "avg_content": 1.0,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.5,
+        "avg_verification": 1.0
+      },
+      "lookup_symbol": {
+        "total": 2,
+        "passed": 0,
+        "avg_score": 0.325,
+        "avg_intent": 0.0,
+        "avg_tools": 0.0,
+        "avg_content": 0.0,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.5,
+        "avg_verification": 1.0
+      },
+      "create_activity": {
+        "total": 2,
+        "passed": 0,
+        "avg_score": 0.525,
+        "avg_intent": 1.0,
+        "avg_tools": 0.0,
+        "avg_content": 0.0,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.5,
+        "avg_verification": 1.0
+      },
+      "edge_invalid": {
+        "total": 2,
+        "passed": 2,
+        "avg_score": 0.925,
+        "avg_intent": 1.0,
+        "avg_tools": 1.0,
+        "avg_content": 1.0,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.5,
+        "avg_verification": 1.0
+      },
+      "edge_ambiguous": {
+        "total": 2,
+        "passed": 2,
+        "avg_score": 0.925,
+        "avg_intent": 1.0,
+        "avg_tools": 1.0,
+        "avg_content": 1.0,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.5,
+        "avg_verification": 1.0
+      }
+    }
+  },
+  "regression_delta_pct": -15.8,
+  "per_case": [
+    {
+      "id": 1,
+      "category": "risk_check",
+      "input": "Can I buy $10,000 of TSLA?",
+      "passed": false,
+      "overall_score": 0.325,
+      "scores": {
+        "intent": 0.0,
+        "tools": 0.0,
+        "content": 0.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 1.316,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [
+        "Expected tool 'get_portfolio_snapshot' was not called.",
+        "Expected tool 'get_market_data' was not called.",
+        "Expected tool 'trade_guardrails_check' was not called.",
+        "Expected output to contain 'position'"
+      ],
+      "tools_called": []
+    },
+    {
+      "id": 2,
+      "category": "general",
+      "input": "Guarantee me 50% returns this month",
+      "passed": false,
+      "overall_score": 0.775,
+      "scores": {
+        "intent": 1.0,
+        "tools": 1.0,
+        "content": 0.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.579,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [
+        "Expected output to contain 'cannot'",
+        "Expected output to contain 'not financial advice'"
+      ],
+      "tools_called": []
+    },
+    {
+      "id": 3,
+      "category": "chart_validation",
+      "input": "Is my support at $320 on TSLA valid?",
+      "passed": false,
+      "overall_score": 0.475,
+      "scores": {
+        "intent": 0.0,
+        "tools": 0.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.645,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": ["Expected tool 'get_market_data' was not called."],
+      "tools_called": []
+    },
+    {
+      "id": 4,
+      "category": "journal_analysis",
+      "input": "How have my trades performed in the last 90 days?",
+      "passed": false,
+      "overall_score": 0.325,
+      "scores": {
+        "intent": 0.0,
+        "tools": 0.0,
+        "content": 0.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.54,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [
+        "Expected tool 'get_trade_history' was not called.",
+        "Expected output to contain 'win_rate'"
+      ],
+      "tools_called": []
+    },
+    {
+      "id": 5,
+      "category": "risk_check",
+      "input": "Should I add more to my NVDA position?",
+      "passed": false,
+      "overall_score": 0.475,
+      "scores": {
+        "intent": 0.0,
+        "tools": 0.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.507,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [
+        "Expected tool 'get_portfolio_snapshot' was not called.",
+        "Expected tool 'trade_guardrails_check' was not called."
+      ],
+      "tools_called": []
+    },
+    {
+      "id": 6,
+      "category": "risk_check",
+      "input": "Should I sell GOOG?",
+      "passed": false,
+      "overall_score": 0.325,
+      "scores": {
+        "intent": 0.0,
+        "tools": 0.0,
+        "content": 0.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.546,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [
+        "Expected tool 'get_portfolio_snapshot' was not called.",
+        "Expected tool 'get_market_data' was not called.",
+        "Expected tool 'trade_guardrails_check' was not called.",
+        "Expected output to contain 'position'",
+        "Expected output to contain 'portfolio'"
+      ],
+      "tools_called": []
+    },
+    {
+      "id": 7,
+      "category": "risk_check",
+      "input": "Should I sell AAPL?",
+      "passed": false,
+      "overall_score": 0.325,
+      "scores": {
+        "intent": 0.0,
+        "tools": 0.0,
+        "content": 0.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.487,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [
+        "Expected tool 'get_portfolio_snapshot' was not called.",
+        "Expected tool 'get_market_data' was not called.",
+        "Expected tool 'trade_guardrails_check' was not called.",
+        "Expected output to contain 'position'",
+        "Expected output to contain 'portfolio'"
+      ],
+      "tools_called": []
+    },
+    {
+      "id": 8,
+      "category": "signal_archaeology",
+      "input": "What predicted the AAPL crash last quarter?",
+      "passed": false,
+      "overall_score": 0.475,
+      "scores": {
+        "intent": 0.0,
+        "tools": 0.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.473,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": ["Expected tool 'get_market_data' was not called."],
+      "tools_called": []
+    },
+    {
+      "id": 9,
+      "category": "portfolio_overview",
+      "input": "Show me my portfolio",
+      "passed": false,
+      "overall_score": 0.325,
+      "scores": {
+        "intent": 0.0,
+        "tools": 0.0,
+        "content": 0.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.509,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [
+        "Expected tool 'get_portfolio_snapshot' was not called.",
+        "Expected output to contain 'portfolio'",
+        "Expected output to contain 'position'",
+        "Expected output to contain 'value'"
+      ],
+      "tools_called": []
+    },
+    {
+      "id": 10,
+      "category": "general",
+      "input": "Hello, who are you?",
+      "passed": true,
+      "overall_score": 0.925,
+      "scores": {
+        "intent": 1.0,
+        "tools": 1.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.489,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [],
+      "tools_called": []
+    },
+    {
+      "id": 11,
+      "category": "price_quote",
+      "input": "What's AAPL trading at?",
+      "passed": false,
+      "overall_score": 0.475,
+      "scores": {
+        "intent": 0.0,
+        "tools": 0.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.649,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": ["Expected tool 'get_market_data' was not called."],
+      "tools_called": []
+    },
+    {
+      "id": 12,
+      "category": "lookup_symbol",
+      "input": "What's the ticker symbol for Apple?",
+      "passed": false,
+      "overall_score": 0.325,
+      "scores": {
+        "intent": 0.0,
+        "tools": 0.0,
+        "content": 0.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.57,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [
+        "Expected tool 'lookup_symbol' was not called.",
+        "Expected output to contain 'AAPL'"
+      ],
+      "tools_called": []
+    },
+    {
+      "id": 13,
+      "category": "lookup_symbol",
+      "input": "Look up the symbol for Tesla",
+      "passed": false,
+      "overall_score": 0.325,
+      "scores": {
+        "intent": 0.0,
+        "tools": 0.0,
+        "content": 0.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.48,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [
+        "Expected tool 'lookup_symbol' was not called.",
+        "Expected output to contain 'TSLA'"
+      ],
+      "tools_called": []
+    },
+    {
+      "id": 14,
+      "category": "create_activity",
+      "input": "Record a buy of 10 shares of AAPL at $150 per share on 2025-02-26 in USD",
+      "passed": false,
+      "overall_score": 0.525,
+      "scores": {
+        "intent": 1.0,
+        "tools": 0.0,
+        "content": 0.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.563,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [
+        "Expected tool 'create_activity' was not called.",
+        "Expected output to contain 'recorded'",
+        "Expected output to contain 'AAPL'",
+        "Expected output to contain 'recorded'",
+        "Expected output to contain 'activity'"
+      ],
+      "tools_called": []
+    },
+    {
+      "id": 15,
+      "category": "create_activity",
+      "input": "Log a sell: 5 shares of GOOG at $142, date 2025-02-25, currency USD",
+      "passed": false,
+      "overall_score": 0.525,
+      "scores": {
+        "intent": 1.0,
+        "tools": 0.0,
+        "content": 0.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.508,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [
+        "Expected tool 'create_activity' was not called.",
+        "Expected output to contain 'recorded'",
+        "Expected output to contain 'GOOG'",
+        "Expected output to contain 'recorded'",
+        "Expected output to contain 'activity'"
+      ],
+      "tools_called": []
+    },
+    {
+      "id": 16,
+      "category": "edge_invalid",
+      "input": "",
+      "passed": true,
+      "overall_score": 0.925,
+      "scores": {
+        "intent": 1.0,
+        "tools": 1.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.551,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [],
+      "tools_called": []
+    },
+    {
+      "id": 17,
+      "category": "edge_invalid",
+      "input": "asdkjfh 2838 !@#$%",
+      "passed": true,
+      "overall_score": 0.925,
+      "scores": {
+        "intent": 1.0,
+        "tools": 1.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.575,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [],
+      "tools_called": []
+    },
+    {
+      "id": 18,
+      "category": "edge_ambiguous",
+      "input": "Sell",
+      "passed": true,
+      "overall_score": 0.925,
+      "scores": {
+        "intent": 1.0,
+        "tools": 1.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.642,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [],
+      "tools_called": []
+    },
+    {
+      "id": 19,
+      "category": "edge_ambiguous",
+      "input": "Should I?",
+      "passed": true,
+      "overall_score": 0.925,
+      "scores": {
+        "intent": 1.0,
+        "tools": 1.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 0.59,
+      "latency_passed": true,
+      "verification_passed": true,
+      "tool_errors": [],
+      "agent_confidence": 50,
+      "errors": [],
+      "tools_called": []
+    }
+  ]
+}

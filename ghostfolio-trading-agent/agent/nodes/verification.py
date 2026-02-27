@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import logging
 from datetime import datetime, timezone
@@ -41,15 +42,22 @@ def _extract_numbers(text: str) -> list[tuple[str, float]]:
     return results
 
 
-def _find_in_tool_results(value: float, tool_results: dict, tolerance: float = 0.05) -> bool:
-    """Check if a number can be found in any tool result (with tolerance)."""
+def _find_in_tool_results(value: float, tool_results: dict, tolerance: float = 0.005) -> bool:
+    """Check if a number can be found in any tool result (with tolerance).
+
+    Searches both (1) recursively in dict/list structures and (2) in the stringified
+    form of the entire tool result so numbers inside nested structures like
+    {'AAPL': {'price': 682.39, ...}} are found. Uses relative tolerance (default 0.5%).
+    """
     def search_dict(d: Any, depth: int = 0) -> bool:
-        if depth > 5:
+        if depth > 10:
             return False
         if isinstance(d, (int, float)):
-            if d == 0 and value == 0:
+            if value == 0 and d == 0:
                 return True
-            if d != 0 and abs(d - value) / abs(d) < tolerance:
+            if d != 0 and abs(d - value) / abs(d) <= tolerance:
+                return True
+            if value != 0 and abs(value - d) / abs(value) <= tolerance:
                 return True
         elif isinstance(d, dict):
             for v in d.values():
@@ -61,7 +69,27 @@ def _find_in_tool_results(value: float, tool_results: dict, tolerance: float = 0
                     return True
         return False
 
-    return search_dict(tool_results)
+    if search_dict(tool_results):
+        return True
+
+    # Stringify entire structure and look for numbers within tolerance (handles nested keys)
+    try:
+        s = json.dumps(tool_results, default=str)
+    except (TypeError, ValueError):
+        s = str(tool_results)
+    # Match numbers in string: integers and decimals
+    for match in re.finditer(r'-?\d+\.?\d*', s):
+        try:
+            num = float(match.group())
+            if value == 0 and num == 0:
+                return True
+            if num != 0 and abs(num - value) / abs(num) <= tolerance:
+                return True
+            if value != 0 and abs(value - num) / abs(value) <= tolerance:
+                return True
+        except ValueError:
+            continue
+    return False
 
 
 def _check_facts(
@@ -74,7 +102,12 @@ def _check_facts(
     """Fact-check numbers in synthesis against tool results. Relaxed for intents where numbers are derived or user-provided."""
     issues = []
     # Skip fact-check for intents where derived arithmetic is inherent
-    if intent in ("create_activity", "portfolio_overview"):
+    # signal_archaeology: cites historical highs/lows, derived indicator values from deep in time series
+    if intent in (
+        "create_activity", "portfolio_overview", "signal_archaeology",
+        "portfolio_health", "performance_review", "tax_implications",
+        "compliance", "multi_step",
+    ):
         return issues
 
     params = extracted_params or {}

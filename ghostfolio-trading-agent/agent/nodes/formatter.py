@@ -109,6 +109,26 @@ def _build_intent_data(intent: str, tool_results: dict) -> dict:
         return result
     elif intent == "portfolio_overview":
         return tool_results.get("get_portfolio_snapshot", {})
+    elif intent == "portfolio_health":
+        return {
+            "snapshot": tool_results.get("get_portfolio_snapshot", {}),
+            "guardrails": tool_results.get("portfolio_guardrails_check", {}),
+        }
+    elif intent == "performance_review":
+        history = tool_results.get("get_trade_history", {})
+        return {
+            "aggregates": history.get("aggregates", {}),
+            "trades": history.get("trades", [])[:20],
+        }
+    elif intent == "tax_implications":
+        return {
+            "tax_estimate": tool_results.get("tax_estimate", {}),
+            "compliance": tool_results.get("compliance_check", {}),
+        }
+    elif intent == "compliance":
+        return tool_results.get("compliance_check", {})
+    elif intent == "multi_step":
+        return {k: v for k, v in tool_results.items()}
     return {}
 
 
