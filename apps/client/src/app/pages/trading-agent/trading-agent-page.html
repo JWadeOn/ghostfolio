@@ -1,59 +1,205 @@
-<div class="d-flex flex-column h-100 overflow-hidden">
-  <div #messagesContainer class="flex-grow-1 overflow-auto p-3">
-    @if (messages.length === 0) {
-      <p class="text-muted" i18n>
-        Ask about market regime, scans, risk checks, or chart validation. For
-        example: "What's the current market regime?" or "Can I buy $10k of
-        TSLA?"
-      </p>
-    }
-    @for (msg of messages; track $index) {
-      <div
-        class="mb-3 p-3 rounded message-bubble"
-        [class.message-user]="msg.role === 'user'"
-        [class.text-danger]="msg.error"
+<div class="trading-agent-container d-flex flex-column h-100 overflow-hidden">
+  <!-- NEW CONVERSATION BUTTON -->
+  @if (hasConversationStarted) {
+    <div class="new-conversation-bar">
+      <button
+        class="new-conversation-btn"
+        i18n-title
+        title="Start a new conversation"
+        [disabled]="isLoading"
+        (click)="startNewConversation()"
       >
-        <strong
-          >{{
-            (msg.role === 'user' ? labelUser : labelAssistant) | uppercase
-          }}:</strong
-        >
-        @if (msg.role === 'assistant') {
-          <div class="mt-1 markdown-content">
-            <markdown [data]="msg.content"></markdown>
+        <ion-icon name="add-outline"></ion-icon>
+        <span i18n>New conversation</span>
+      </button>
+    </div>
+  }
+
+  <!-- MESSAGE AREA -->
+  <div #messagesContainer class="messages-area flex-grow-1 overflow-auto">
+    <!-- RESTORING HISTORY -->
+    @if (isRestoring) {
+      <div class="restoring-screen">
+        <div class="thinking-dots">
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+        </div>
+        <span class="restoring-text" i18n>Restoring conversation...</span>
+      </div>
+    }
+
+    <!-- WELCOME SCREEN -->
+    @if (!hasConversationStarted && !isRestoring) {
+      <div class="welcome-screen">
+        <div class="welcome-icon-wrap">
+          <ion-icon class="welcome-icon" name="sparkles-outline"></ion-icon>
+        </div>
+        <h2 class="welcome-title" i18n>Trading Assistant</h2>
+        <p class="welcome-subtitle" i18n>
+          Ask about your portfolio, evaluate trades, or check market conditions.
+        </p>
+
+        <div class="prompt-grid">
+          @for (prompt of suggestedPrompts; track prompt.text) {
+            <button
+              class="prompt-card"
+              [disabled]="isLoading"
+              (click)="onSuggestedQuestion(prompt.text)"
+            >
+              <ion-icon class="prompt-icon" [name]="prompt.icon"></ion-icon>
+              <span>{{ prompt.text }}</span>
+            </button>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- MESSAGES LIST -->
+    @if (hasConversationStarted) {
+      <div class="messages-list">
+        @for (msg of messages; track $index) {
+          <div
+            class="message-row"
+            [class.message-assistant]="msg.role === 'assistant'"
+            [class.message-error]="msg.error"
+            [class.message-user]="msg.role === 'user'"
+          >
+            @if (msg.role === 'assistant') {
+              <div class="avatar-row">
+                <div class="avatar avatar-assistant">
+                  <ion-icon name="sparkles-outline"></ion-icon>
+                </div>
+                <span class="avatar-label" i18n>Assistant</span>
+              </div>
+              <div class="markdown-content">
+                <markdown [data]="msg.content"></markdown>
+              </div>
+
+              @if (msg.confidence !== undefined || msg.toolsUsed?.length) {
+                <div class="message-meta">
+                  @if (msg.confidence !== undefined) {
+                    <span
+                      class="meta-badge"
+                      [ngClass]="getConfidenceLevel(msg.confidence).cssClass"
+                    >
+                      {{ msg.confidence }}% confidence
+                    </span>
+                  }
+                  @if (msg.toolsUsed?.length) {
+                    <button class="meta-tools" (click)="toggleDetails($index)">
+                      {{ msg.toolsUsed.length }}
+                      {{ msg.toolsUsed.length === 1 ? 'tool' : 'tools' }}
+                      <ion-icon
+                        class="meta-chevron"
+                        [name]="
+                          msg.detailsExpanded
+                            ? 'chevron-up-outline'
+                            : 'chevron-down-outline'
+                        "
+                      ></ion-icon>
+                    </button>
+                  }
+                  @if (msg.latencySeconds) {
+                    <span class="meta-latency"
+                      >{{ msg.latencySeconds | number: '1.1-1' }}s</span
+                    >
+                  }
+                </div>
+
+                @if (msg.detailsExpanded) {
+                  <div class="tool-details">
+                    @for (tool of msg.toolsUsed; track tool) {
+                      <span class="tool-chip">{{ formatToolName(tool) }}</span>
+                    }
+                  </div>
+                }
+              }
+
+              @if (msg.disclaimer) {
+                <div class="message-disclaimer">{{ msg.disclaimer }}</div>
+              }
+            } @else {
+              <div class="avatar-row">
+                <div class="avatar avatar-user">
+                  <ion-icon name="person-outline"></ion-icon>
+                </div>
+                <span class="avatar-label" i18n>You</span>
+              </div>
+              <div class="user-content">{{ msg.content }}</div>
+            }
           </div>
-        } @else {
-          <div class="mt-1">{{ msg.content }}</div>
+        }
+
+        <!-- THINKING STATE -->
+        @if (isLoading) {
+          <div class="message-row message-assistant thinking-row-wrapper">
+            <div class="avatar-row">
+              <div class="avatar avatar-assistant">
+                <ion-icon name="sparkles-outline"></ion-icon>
+              </div>
+              <span class="avatar-label" i18n>Assistant</span>
+            </div>
+            <div class="thinking-row">
+              <div class="thinking-dots">
+                <span class="dot"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+              </div>
+              <span class="thinking-text" i18n>Analyzing...</span>
+            </div>
+          </div>
         }
       </div>
     }
-    @if (isLoading) {
-      <div class="d-flex align-items-center gap-2 text-muted">
-        <mat-spinner diameter="24"></mat-spinner>
-        <span i18n>Thinking...</span>
-      </div>
-    }
   </div>
-  <div class="p-3 border-top trading-agent-input-bar">
-    <form class="d-flex gap-2 align-items-end" (ngSubmit)="onSubmit()">
-      <mat-form-field appearance="outline" class="flex-grow-1">
-        <mat-label i18n>Message</mat-label>
-        <input
-          matInput
-          name="inputMessage"
-          [disabled]="isLoading"
-          [(ngModel)]="inputMessage"
-          (keydown.enter)="$event.preventDefault(); onSubmit()"
-        />
-      </mat-form-field>
-      <button
-        color="primary"
-        mat-flat-button
-        type="submit"
-        [disabled]="isLoading || !inputMessage?.trim()"
-      >
-        <span i18n>Send</span>
-      </button>
-    </form>
+
+  <!-- INPUT AREA -->
+  <div
+    class="input-area"
+    [class.input-area-conversation]="hasConversationStarted"
+  >
+    <div class="input-inner">
+      <form class="input-form" (ngSubmit)="onSubmit()">
+        <div class="input-field-wrap">
+          <input
+            autocomplete="off"
+            class="chat-input"
+            name="inputMessage"
+            [disabled]="isLoading"
+            [placeholder]="inputPlaceholder"
+            [(ngModel)]="inputMessage"
+            (keydown.enter)="$event.preventDefault(); onSubmit()"
+          />
+          <button
+            class="send-btn"
+            type="submit"
+            [disabled]="isLoading || !inputMessage?.trim()"
+          >
+            <ion-icon name="arrow-up-outline"></ion-icon>
+          </button>
+        </div>
+      </form>
+
+      <!-- Suggestion chips shown below input during conversation -->
+      @if (hasConversationStarted) {
+        <div class="suggestion-chips">
+          @for (prompt of suggestedPrompts; track prompt.text) {
+            <button
+              class="suggestion-chip"
+              [disabled]="isLoading"
+              (click)="onSuggestedQuestion(prompt.text)"
+            >
+              <ion-icon class="chip-icon" [name]="prompt.icon"></ion-icon>
+              {{ prompt.text }}
+            </button>
+          }
+        </div>
+      }
+
+      <div class="input-hint" i18n>
+        AI-powered analysis. Not financial advice.
+      </div>
+    </div>
   </div>
 </div>

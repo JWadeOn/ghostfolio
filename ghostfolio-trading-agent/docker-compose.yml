@@ -71,9 +71,15 @@ services:
       LANGCHAIN_TRACING_V2: 'true'
       LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY}
       LANGCHAIN_PROJECT: ghostfolio-trading-agent
+      DATABASE_URL: postgresql://user:password@postgres:5432/ghostfolio-db?sslmode=prefer
+      REDIS_URL: redis://redis:6379
     ports:
       - '8000:8000'
     depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       ghostfolio:
         condition: service_healthy
 

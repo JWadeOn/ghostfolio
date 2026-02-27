@@ -1,5 +1,8 @@
 """LangGraph agent definition — ReAct loop with mandatory intent and passive context."""
 
+from __future__ import annotations
+
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import StateGraph, END
 
 from agent.state import AgentState
@@ -12,7 +15,7 @@ from agent.nodes.verification import verify_node, route_after_verification
 from agent.nodes.formatter import format_output_node
 
 
-def build_agent_graph():
+def build_agent_graph(checkpointer: BaseCheckpointSaver | None = None):
     """Build and compile the ReAct agent graph.
 
     Flow:
@@ -50,7 +53,8 @@ def build_agent_graph():
 
     graph.add_edge("format_output", END)
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
 
 
+# Graph without checkpointer for tests and scripts that import directly
 agent_graph = build_agent_graph()

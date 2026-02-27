@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     langchain_api_key: str = ""
     langchain_project: str = "ghostfolio-trading-agent"
 
+    # Persistence
+    database_url: str = ""
+    redis_url: str = "redis://localhost:6379"
+
     # Agent
     agent_port: int = 8000
     cache_ttl_seconds: int = 300

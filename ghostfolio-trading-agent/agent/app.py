@@ -7,6 +7,7 @@ import logging
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,12 +15,19 @@ from typing import Any
 import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
+from pydantic import BaseModel
 
 from agent.config import get_settings
-from agent.graph import agent_graph
 from agent.ghostfolio_client import GhostfolioClient
+from agent.graph import build_agent_graph
+from agent.persistence import (
+    cache_messages,
+    get_conversation_history,
+    init_checkpointer,
+    init_redis,
+    shutdown as persistence_shutdown,
+)
 from agent.tools.regime import detect_regime
 from agent.tools.scanner import scan_strategies
 
@@ -37,31 +45,64 @@ else:
     os.environ.pop("LANGCHAIN_TRACING_V2", None)
     logger.info("LangSmith tracing disabled (no API key or tracing_v2=false)")
 
+# Log loaded tools early so you can verify create_activity is available
+try:
+    from agent.tools.langchain_tools import get_tools
+
+    _tool_names = [t.name for t in get_tools() if getattr(t, "name", None)]
+    logger.info("Agent tools loaded: %s", ", ".join(_tool_names))
+except Exception as e:
+    logger.warning("Could not list tools at startup: %s", e)
+
+# ---------------------------------------------------------------------------
+# Graph compiled at startup with the Postgres checkpointer
+# ---------------------------------------------------------------------------
+_agent_graph = None
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    """Startup: initialise persistence and compile graph.  Shutdown: close connections."""
+    global _agent_graph
+
+    settings = get_settings()
+
+    checkpointer = None
+    if settings.database_url:
+        try:
+            checkpointer = await init_checkpointer()
+        except Exception as exc:
+            logger.error("Failed to initialise Postgres checkpointer: %s", exc)
+
+    await init_redis()
+
+    _agent_graph = build_agent_graph(checkpointer=checkpointer)
+    logger.info("Agent graph compiled (checkpointer=%s)", type(checkpointer).__name__ if checkpointer else "None")
+
+    yield
+
+    await persistence_shutdown()
+
+
 app = FastAPI(
     title="Ghostfolio Trading Intelligence Agent",
     description="AI-powered trading analysis built on Ghostfolio",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3333", "http://localhost:4200"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3333",
+        "http://localhost:4200",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# In-memory thread state (for conversation continuity)
-_thread_states: dict[str, dict] = {}
-
-# Log loaded tools at startup so you can verify create_activity is available after code changes
-try:
-    from agent.tools.langchain_tools import get_tools
-    _tool_names = [t.name for t in get_tools() if getattr(t, "name", None)]
-    logger.info("Agent tools loaded: %s", ", ".join(_tool_names))
-except Exception as e:
-    logger.warning("Could not list tools at startup: %s", e)
 
 
 class ChatRequest(BaseModel):
@@ -73,6 +114,11 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: dict[str, Any]
     thread_id: str
+
+
+class ConversationResponse(BaseModel):
+    thread_id: str
+    messages: list[dict[str, str]]
 
 
 def _make_json_serializable(obj: Any) -> Any:
@@ -96,19 +142,14 @@ def _make_json_serializable(obj: Any) -> Any:
 async def chat(request: ChatRequest):
     """Main chat endpoint — processes natural language queries through the agent."""
     thread_id = request.thread_id or str(uuid.uuid4())
+    access_token = (request.access_token or "").strip() or None
 
-    # Get or create thread state
-    prev_state = _thread_states.get(thread_id, {})
-
-    initial_state = {
-        "messages": prev_state.get("messages", []) + [HumanMessage(content=request.message)],
+    # Per-request fields only; regime/portfolio are restored by the checkpointer
+    input_state = {
+        "messages": [HumanMessage(content=request.message)],
         "intent": "",
         "extracted_params": {},
-        "regime": prev_state.get("regime"),
-        "regime_timestamp": prev_state.get("regime_timestamp"),
-        "portfolio": prev_state.get("portfolio"),
-        "portfolio_timestamp": prev_state.get("portfolio_timestamp"),
-        "ghostfolio_access_token": (request.access_token or "").strip() or None,
+        "ghostfolio_access_token": access_token,
         "tool_results": {},
         "tools_called": [],
         "react_step": 0,
@@ -122,21 +163,19 @@ async def chat(request: ChatRequest):
         "trace_log": [],
     }
 
+    config = {"configurable": {"thread_id": thread_id}}
+
     try:
         t0 = time.perf_counter()
-        result = agent_graph.invoke(initial_state)
+        result = await _agent_graph.ainvoke(input_state, config=config)
         total_latency = round(time.perf_counter() - t0, 3)
 
-        _thread_states[thread_id] = {
-            "messages": result.get("messages", []),
-            "regime": result.get("regime"),
-            "regime_timestamp": result.get("regime_timestamp"),
-            "portfolio": result.get("portfolio"),
-            "portfolio_timestamp": result.get("portfolio_timestamp"),
-        }
+        # Cache message history in Redis for the GET endpoint
+        await cache_messages(thread_id, result.get("messages", []))
 
-        response_data = result.get("response", {"summary": "No response generated", "confidence": 0})
-        # Inject total request latency
+        response_data = result.get(
+            "response", {"summary": "No response generated", "confidence": 0}
+        )
         obs = response_data.get("observability", {})
         obs["total_latency_seconds"] = total_latency
         response_data["observability"] = obs
@@ -150,12 +189,9 @@ async def chat(request: ChatRequest):
             obs.get("token_usage", {}).get("total", {}),
         )
 
-        return ChatResponse(
-            response=response_data,
-            thread_id=thread_id,
-        )
+        return ChatResponse(response=response_data, thread_id=thread_id)
     except Exception as e:
-        logger.error(f"Agent error: {e}", exc_info=True)
+        logger.error("Agent error: %s", e, exc_info=True)
         return ChatResponse(
             response={
                 "summary": f"An error occurred: {str(e)}",
@@ -167,11 +203,20 @@ async def chat(request: ChatRequest):
                 "tools_used": [],
                 "disclaimer": "This is market analysis, not financial advice.",
                 "observability": {
-                    "error_log": [{"node": "app", "error": str(e), "category": "unknown_error"}],
+                    "error_log": [
+                        {"node": "app", "error": str(e), "category": "unknown_error"}
+                    ],
                 },
             },
             thread_id=thread_id,
         )
+
+
+@app.get("/api/conversation/{thread_id}", response_model=ConversationResponse)
+async def conversation(thread_id: str):
+    """Return the message history for a given thread from Redis cache or Postgres checkpoint."""
+    messages = await get_conversation_history(thread_id, _agent_graph)
+    return ConversationResponse(thread_id=thread_id, messages=messages)
 
 
 @app.get("/api/health")
@@ -179,7 +224,6 @@ async def health():
     """Health check endpoint."""
     settings = get_settings()
 
-    # Check Ghostfolio
     ghostfolio_status = "unreachable"
     try:
         client = GhostfolioClient()
@@ -189,7 +233,6 @@ async def health():
     except Exception:
         pass
 
-    # Check LangSmith config
     langsmith_status = "configured" if settings.langchain_api_key else "not_configured"
 
     return {
@@ -207,7 +250,7 @@ async def get_regime():
         result = detect_regime()
         return _make_json_serializable(result)
     except Exception as e:
-        logger.error(f"Regime detection failed: {e}")
+        logger.error("Regime detection failed: %s", e)
         return {"error": str(e)}
 
 
@@ -288,11 +331,12 @@ async def scan(strategy: str = "all", symbols: str | None = None):
         )
         return result
     except Exception as e:
-        logger.error(f"Scan failed: {e}")
+        logger.error("Scan failed: %s", e)
         return {"error": str(e)}
 
 
 if __name__ == "__main__":
     import uvicorn
+
     settings = get_settings()
     uvicorn.run(app, host="0.0.0.0", port=settings.agent_port)
