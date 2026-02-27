@@ -19,29 +19,29 @@ from langgraph.prebuilt import create_react_agent
 agent = create_react_agent(model, tools=[portfolio_guardrails_check])
 ```
 
-That's it. Your agent can now answer questions like *"Is my portfolio too concentrated?"* or *"Check my holdings for risk issues."*
+That's it. Your agent can now answer questions like _"Is my portfolio too concentrated?"_ or _"Check my holdings for risk issues."_
 
 ## What It Checks
 
-| # | Rule | Violation | Warning |
-|---|------|-----------|---------|
-| 1 | **Position concentration** | Single position > 20% of portfolio | > 15% |
-| 2 | **Sector concentration** | Single sector > 40% of portfolio | > 30% |
-| 3 | **Cash buffer** | Cash < 3% of portfolio | < 5% |
-| 4 | **Diversification** | Only 1 non-cash holding | < 3 non-cash holdings |
-| 5 | **Extreme concentration** | Top position > 50% | Top 2 positions > 80% |
+| #   | Rule                       | Violation                          | Warning               |
+| --- | -------------------------- | ---------------------------------- | --------------------- |
+| 1   | **Position concentration** | Single position > 20% of portfolio | > 15%                 |
+| 2   | **Sector concentration**   | Single sector > 40% of portfolio   | > 30%                 |
+| 3   | **Cash buffer**            | Cash < 3% of portfolio             | < 5%                  |
+| 4   | **Diversification**        | Only 1 non-cash holding            | < 3 non-cash holdings |
+| 5   | **Extreme concentration**  | Top position > 50%                 | Top 2 positions > 80% |
 
 ## Input Schema
 
 ```json
 {
   "holdings": [
-    {"symbol": "AAPL", "value": 15000, "sector": "Technology"},
-    {"symbol": "JNJ",  "value": 15000, "sector": "Healthcare"},
-    {"symbol": "JPM",  "value": 15000, "sector": "Financials"},
-    {"symbol": "XOM",  "value": 10000, "sector": "Energy"},
-    {"symbol": "PG",   "value": 10000, "sector": "Consumer Staples"},
-    {"symbol": "CASH", "value": 5000,  "sector": "Cash"}
+    { "symbol": "AAPL", "value": 15000, "sector": "Technology" },
+    { "symbol": "JNJ", "value": 15000, "sector": "Healthcare" },
+    { "symbol": "JPM", "value": 15000, "sector": "Financials" },
+    { "symbol": "XOM", "value": 10000, "sector": "Energy" },
+    { "symbol": "PG", "value": 10000, "sector": "Consumer Staples" },
+    { "symbol": "CASH", "value": 5000, "sector": "Cash" }
   ]
 }
 ```
@@ -59,11 +59,9 @@ Cash holdings are identified by symbol: `CASH`, `$CASH`, or `USD`.
     "position_concentration": {
       "violation_threshold_pct": 20.0,
       "warning_threshold_pct": 15.0,
-      "details": [
-        {"symbol": "AAPL", "pct": 21.43, "status": "ok"}
-      ]
+      "details": [{ "symbol": "AAPL", "pct": 21.43, "status": "ok" }]
     },
-    "sector_concentration": { "..." : "..." },
+    "sector_concentration": { "...": "..." },
     "cash_buffer": { "cash_pct": 7.14, "status": "ok" },
     "diversification": { "non_cash_holdings": 5, "status": "ok" },
     "position_count": { "status": "ok", "details": [] }
@@ -120,16 +118,16 @@ result = _check_impl(
 )
 ```
 
-| Environment Variable | Default | Description |
-|---------------------|---------|-------------|
-| `GUARDRAILS_POSITION_VIOLATION_PCT` | 20 | Single position violation % |
-| `GUARDRAILS_POSITION_WARNING_PCT` | 15 | Single position warning % |
-| `GUARDRAILS_SECTOR_VIOLATION_PCT` | 40 | Single sector violation % |
-| `GUARDRAILS_SECTOR_WARNING_PCT` | 30 | Single sector warning % |
-| `GUARDRAILS_CASH_VIOLATION_PCT` | 3 | Minimum cash violation % |
-| `GUARDRAILS_CASH_WARNING_PCT` | 5 | Minimum cash warning % |
-| `GUARDRAILS_DIVERSIFICATION_VIOLATION_COUNT` | 1 | Min holdings for violation |
-| `GUARDRAILS_DIVERSIFICATION_WARNING_COUNT` | 3 | Min holdings for warning |
+| Environment Variable                         | Default | Description                 |
+| -------------------------------------------- | ------- | --------------------------- |
+| `GUARDRAILS_POSITION_VIOLATION_PCT`          | 20      | Single position violation % |
+| `GUARDRAILS_POSITION_WARNING_PCT`            | 15      | Single position warning %   |
+| `GUARDRAILS_SECTOR_VIOLATION_PCT`            | 40      | Single sector violation %   |
+| `GUARDRAILS_SECTOR_WARNING_PCT`              | 30      | Single sector warning %     |
+| `GUARDRAILS_CASH_VIOLATION_PCT`              | 3       | Minimum cash violation %    |
+| `GUARDRAILS_CASH_WARNING_PCT`                | 5       | Minimum cash warning %      |
+| `GUARDRAILS_DIVERSIFICATION_VIOLATION_COUNT` | 1       | Min holdings for violation  |
+| `GUARDRAILS_DIVERSIFICATION_WARNING_COUNT`   | 3       | Min holdings for warning    |
 
 ## License
 

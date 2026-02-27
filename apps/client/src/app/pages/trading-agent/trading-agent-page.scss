@@ -8,7 +8,6 @@
   --ta-accent-rgb: 54, 207, 204;
   --ta-accent-light: #e7f9f9;
   --ta-accent-hover: rgba(54, 207, 204, 0.08);
-  --ta-secondary: #3686cf;
   --ta-border: #e8eaed;
   --ta-surface: #fff;
   --ta-bg: #fafafa;
@@ -16,12 +15,11 @@
   --ta-text: #1f2937;
   --ta-card-bg: #fff;
   --ta-card-border: #e5e7eb;
-  --ta-card-hover: var(--ta-accent-light);
   --ta-user-bubble: #f0f2f5;
-  --ta-assistant-bg: transparent;
   --ta-confidence-high: #16a34a;
   --ta-confidence-medium: #d97706;
   --ta-confidence-low: #dc2626;
+  --ta-error-text: #dc2626;
   --ta-chip-bg: var(--ta-accent-light);
   --ta-chip-text: #22706e;
   --ta-input-bg: #f4f4f5;
@@ -29,59 +27,11 @@
   --ta-input-focus: var(--ta-accent);
   --ta-send-bg: var(--ta-accent);
   --ta-send-text: #fff;
-  --ta-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --ta-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
 
   background: var(--ta-bg);
   color: var(--ta-text);
 }
 
-// ============================================================
-// NEW CONVERSATION BAR
-// ============================================================
-.new-conversation-bar {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0.5rem 1rem 0;
-  background: var(--ta-bg);
-}
-
-.new-conversation-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.75rem;
-  background: var(--ta-surface);
-  border: 1px solid var(--ta-card-border);
-  border-radius: 8px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--ta-muted);
-  cursor: pointer;
-  transition:
-    background-color 0.15s,
-    border-color 0.15s,
-    color 0.15s;
-
-  ion-icon {
-    font-size: 0.875rem;
-  }
-
-  &:hover:not(:disabled) {
-    background: var(--ta-accent-hover);
-    border-color: var(--ta-accent);
-    color: var(--ta-text);
-  }
-
-  &:disabled {
-    opacity: 0.3;
-    cursor: default;
-  }
-}
-
-// ============================================================
-// RESTORING SCREEN
-// ============================================================
 .restoring-screen {
   display: flex;
   flex-direction: column;
@@ -89,7 +39,6 @@
   justify-content: center;
   height: 100%;
   gap: 0.75rem;
-  animation: fadeUp 0.3s ease-out;
 }
 
 .restoring-text {
@@ -97,9 +46,6 @@
   color: var(--ta-muted);
 }
 
-// ============================================================
-// WELCOME SCREEN
-// ============================================================
 .welcome-screen {
   display: flex;
   flex-direction: column;
@@ -108,18 +54,13 @@
   height: 100%;
   padding: 2rem;
   text-align: center;
-  animation: fadeUp 0.4s ease-out;
 }
 
 .welcome-icon-wrap {
   width: 56px;
   height: 56px;
   border-radius: 16px;
-  background: linear-gradient(
-    135deg,
-    rgba(var(--ta-accent-rgb), 0.15),
-    rgba(var(--ta-accent-rgb), 0.05)
-  );
+  background: rgba(var(--ta-accent-rgb), 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -135,7 +76,6 @@
   font-size: 1.375rem;
   font-weight: 700;
   margin: 0 0 0.5rem;
-  letter-spacing: -0.01em;
 }
 
 .welcome-subtitle {
@@ -166,23 +106,11 @@
   color: inherit;
   text-align: left;
   cursor: pointer;
-  transition:
-    background-color 0.2s,
-    border-color 0.2s,
-    box-shadow 0.2s,
-    transform 0.15s;
-  box-shadow: var(--ta-shadow-sm);
   line-height: 1.4;
 
   &:hover:not(:disabled) {
     background: var(--ta-accent-hover);
     border-color: var(--ta-accent);
-    box-shadow: var(--ta-shadow-md);
-    transform: translateY(-1px);
-  }
-
-  &:active:not(:disabled) {
-    transform: translateY(0);
   }
 
   &:disabled {
@@ -197,13 +125,6 @@
   flex-shrink: 0;
 }
 
-// ============================================================
-// MESSAGES
-// ============================================================
-.messages-area {
-  scroll-behavior: smooth;
-}
-
 .messages-list {
   max-width: 740px;
   margin: 0 auto;
@@ -212,14 +133,12 @@
 
 .message-row {
   padding: 1.25rem 0;
-  animation: fadeUp 0.3s ease-out;
 
   & + & {
     border-top: 1px solid var(--ta-border);
   }
 }
 
-// --- Avatar row (shared between user & assistant) ---
 .avatar-row {
   display: flex;
   align-items: center;
@@ -242,11 +161,7 @@
 }
 
 .avatar-assistant {
-  background: linear-gradient(
-    135deg,
-    rgba(var(--ta-accent-rgb), 0.2),
-    rgba(var(--ta-accent-rgb), 0.08)
-  );
+  background: rgba(var(--ta-accent-rgb), 0.14);
   color: var(--ta-accent);
 }
 
@@ -260,20 +175,17 @@
   font-weight: 600;
   color: var(--ta-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
-// --- User message ---
 .message-user {
   .user-content {
     font-size: 0.9375rem;
     line-height: 1.6;
     color: var(--ta-text);
-    padding-left: 2.375rem; // align with avatar
+    padding-left: 2.375rem;
   }
 }
 
-// --- Assistant message ---
 .message-assistant {
   font-size: 0.9375rem;
   line-height: 1.6;
@@ -286,13 +198,10 @@
 .message-error {
   .markdown-content,
   .user-content {
-    color: var(--ta-confidence-low);
+    color: var(--ta-error-text);
   }
 }
 
-// ============================================================
-// MESSAGE META
-// ============================================================
 .message-meta {
   display: flex;
   align-items: center;
@@ -309,7 +218,6 @@
   font-weight: 600;
   color: #fff;
   font-size: 0.6875rem;
-  letter-spacing: 0.01em;
 
   &.confidence-high {
     background: var(--ta-confidence-high);
@@ -334,7 +242,6 @@
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  transition: color 0.15s;
 
   &:hover {
     color: var(--ta-accent);
@@ -345,13 +252,6 @@
   font-size: 0.75rem;
 }
 
-.meta-latency {
-  font-variant-numeric: tabular-nums;
-}
-
-// ============================================================
-// TOOL DETAILS
-// ============================================================
 .tool-details {
   display: flex;
   flex-wrap: wrap;
@@ -369,9 +269,6 @@
   font-weight: 600;
 }
 
-// ============================================================
-// DISCLAIMER
-// ============================================================
 .message-disclaimer {
   margin-top: 0.5rem;
   padding-left: 2.375rem;
@@ -381,9 +278,6 @@
   font-style: italic;
 }
 
-// ============================================================
-// THINKING
-// ============================================================
 .thinking-row-wrapper {
   .thinking-row {
     display: flex;
@@ -432,9 +326,6 @@
   color: var(--ta-muted);
 }
 
-// ============================================================
-// INPUT AREA
-// ============================================================
 .input-area {
   padding: 0.75rem 1rem 0.5rem;
   border-top: 1px solid var(--ta-border);
@@ -444,7 +335,6 @@
 .input-area-conversation {
   background: var(--ta-bg);
   border-top-color: transparent;
-  box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.04);
 }
 
 .input-inner {
@@ -464,13 +354,9 @@
   border: 1.5px solid var(--ta-input-border);
   border-radius: 14px;
   padding: 0.25rem 0.25rem 0.25rem 1rem;
-  transition:
-    border-color 0.2s,
-    box-shadow 0.2s;
 
   &:focus-within {
     border-color: var(--ta-input-focus);
-    box-shadow: 0 0 0 3px rgba(var(--ta-accent-rgb), 0.1);
     background: var(--ta-surface);
   }
 }
@@ -508,9 +394,6 @@
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition:
-    opacity 0.15s,
-    transform 0.15s;
 
   ion-icon {
     font-size: 1.125rem;
@@ -518,11 +401,6 @@
 
   &:hover:not(:disabled) {
     opacity: 0.85;
-    transform: scale(1.05);
-  }
-
-  &:active:not(:disabled) {
-    transform: scale(0.95);
   }
 
   &:disabled {
@@ -531,60 +409,6 @@
   }
 }
 
-// ============================================================
-// SUGGESTION CHIPS (below input during conversation)
-// ============================================================
-.suggestion-chips {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.625rem;
-  overflow-x: auto;
-  padding-bottom: 0.25rem;
-  scrollbar-width: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
-}
-
-.suggestion-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  white-space: nowrap;
-  padding: 0.375rem 0.75rem;
-  background: var(--ta-surface);
-  border: 1px solid var(--ta-card-border);
-  border-radius: 20px;
-  font-size: 0.75rem;
-  color: var(--ta-muted);
-  cursor: pointer;
-  transition:
-    background-color 0.15s,
-    border-color 0.15s,
-    color 0.15s;
-  flex-shrink: 0;
-
-  &:hover:not(:disabled) {
-    background: var(--ta-accent-hover);
-    border-color: var(--ta-accent);
-    color: var(--ta-text);
-  }
-
-  &:disabled {
-    opacity: 0.3;
-    cursor: default;
-  }
-}
-
-.chip-icon {
-  font-size: 0.875rem;
-  color: var(--ta-accent);
-}
-
-// ============================================================
-// HINT
-// ============================================================
 .input-hint {
   text-align: center;
   font-size: 0.6875rem;
@@ -594,13 +418,9 @@
   padding-bottom: 0.125rem;
 }
 
-// ============================================================
-// MARKDOWN
-// ============================================================
 ::ng-deep .markdown-content markdown {
   p {
     margin-bottom: 0.5em;
-
     &:last-child {
       margin-bottom: 0;
     }
@@ -676,30 +496,12 @@
   }
 }
 
-// ============================================================
-// ANIMATIONS
-// ============================================================
-@keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-// ============================================================
-// DARK THEME
-// ============================================================
 :host-context(.theme-dark) {
   .trading-agent-container {
     --ta-accent: #54d6d4;
     --ta-accent-rgb: 84, 214, 212;
     --ta-accent-light: rgba(54, 207, 204, 0.12);
     --ta-accent-hover: rgba(54, 207, 204, 0.1);
-    --ta-secondary: #72aadd;
     --ta-border: rgba(255, 255, 255, 0.07);
     --ta-surface: rgba(30, 30, 30, 1);
     --ta-bg: rgba(20, 20, 20, 1);
@@ -707,31 +509,15 @@
     --ta-text: #e5e7eb;
     --ta-card-bg: rgba(255, 255, 255, 0.04);
     --ta-card-border: rgba(255, 255, 255, 0.08);
-    --ta-card-hover: rgba(54, 207, 204, 0.08);
     --ta-user-bubble: rgba(255, 255, 255, 0.06);
     --ta-chip-bg: rgba(54, 207, 204, 0.1);
     --ta-chip-text: #72dddb;
     --ta-input-bg: rgba(255, 255, 255, 0.06);
     --ta-input-border: rgba(255, 255, 255, 0.08);
-    --ta-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-    --ta-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
-  }
-
-  .message-error {
-    .markdown-content,
-    .user-content {
-      color: #fca5a5;
-    }
-  }
-
-  .chat-input {
-    color: var(--ta-text);
+    --ta-error-text: #fca5a5;
   }
 }
 
-// ============================================================
-// RESPONSIVE
-// ============================================================
 @media (max-width: 600px) {
   .prompt-grid {
     grid-template-columns: 1fr;

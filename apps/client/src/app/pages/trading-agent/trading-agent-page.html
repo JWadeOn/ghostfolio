@@ -1,20 +1,4 @@
 <div class="trading-agent-container d-flex flex-column h-100 overflow-hidden">
-  <!-- NEW CONVERSATION BUTTON -->
-  @if (hasConversationStarted) {
-    <div class="new-conversation-bar">
-      <button
-        class="new-conversation-btn"
-        i18n-title
-        title="Start a new conversation"
-        [disabled]="isLoading"
-        (click)="startNewConversation()"
-      >
-        <ion-icon name="add-outline"></ion-icon>
-        <span i18n>New conversation</span>
-      </button>
-    </div>
-  }
-
   <!-- MESSAGE AREA -->
   <div #messagesContainer class="messages-area flex-grow-1 overflow-auto">
     <!-- RESTORING HISTORY -->
@@ -180,22 +164,6 @@
           </button>
         </div>
       </form>
-
-      <!-- Suggestion chips shown below input during conversation -->
-      @if (hasConversationStarted) {
-        <div class="suggestion-chips">
-          @for (prompt of suggestedPrompts; track prompt.text) {
-            <button
-              class="suggestion-chip"
-              [disabled]="isLoading"
-              (click)="onSuggestedQuestion(prompt.text)"
-            >
-              <ion-icon class="chip-icon" [name]="prompt.icon"></ion-icon>
-              {{ prompt.text }}
-            </button>
-          }
-        </div>
-      }
 
       <div class="input-hint" i18n>
         AI-powered analysis. Not financial advice.

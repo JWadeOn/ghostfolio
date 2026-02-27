@@ -16,7 +16,6 @@ import { MatButtonModule } from '@angular/material/button';
 import { IonIcon } from '@ionic/angular/standalone';
 import { addIcons } from 'ionicons';
 import {
-  addOutline,
   arrowUpOutline,
   checkmarkCircleOutline,
   chevronDownOutline,
@@ -157,7 +156,6 @@ export class GfTradingAgentPageComponent implements OnInit, AfterViewChecked {
     private ngZone: NgZone
   ) {
     addIcons({
-      addOutline,
       arrowUpOutline,
       checkmarkCircleOutline,
       chevronDownOutline,
@@ -198,13 +196,6 @@ export class GfTradingAgentPageComponent implements OnInit, AfterViewChecked {
     return this.hasConversationStarted
       ? $localize`Follow up...`
       : $localize`Ask anything about your portfolio...`;
-  }
-
-  public startNewConversation(): void {
-    this.threadId = crypto.randomUUID();
-    localStorage.setItem(THREAD_STORAGE_KEY, this.threadId);
-    this.messages = [];
-    this.changeDetectorRef.markForCheck();
   }
 
   public onSuggestedQuestion(question: string): void {
