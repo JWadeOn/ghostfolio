@@ -19,6 +19,7 @@ from agent.tools.portfolio_analysis import portfolio_analysis as _portfolio_anal
 from agent.tools.transaction_categorize import transaction_categorize as _transaction_categorize
 from agent.tools.tax_estimate import tax_estimate as _tax_estimate
 from agent.tools.compliance_check import compliance_check as _compliance_check
+from agent.tools.watchlist import add_to_watchlist as _add_to_watchlist
 
 
 @tool
@@ -248,6 +249,27 @@ def compliance_check(transaction: dict, regulations: list[str]) -> dict:
     return _compliance_check(transaction=transaction, regulations=regulations)
 
 
+@tool
+def add_to_watchlist(
+    symbol: str,
+    data_source: Optional[str] = None,
+    **kwargs: Any,
+) -> dict:
+    """Add a symbol to the user's Ghostfolio watchlist.
+
+    Use when the user asks to add a stock, ticker, or symbol to their watchlist (e.g. "Add AAPL to my watchlist", "Put MSFT on my watchlist"). Symbol is resolved via Ghostfolio; data_source is optional and can be auto-resolved.
+
+    Args:
+        symbol: Ticker symbol to add (e.g. "AAPL", "MSFT").
+        data_source: Optional; Ghostfolio data source (e.g. YAHOO, FINANCIAL_MODELING_PREP). Omit to auto-resolve.
+    """
+    return _add_to_watchlist(
+        symbol=symbol,
+        data_source=data_source,
+        client=kwargs.get("client"),
+    )
+
+
 ALL_TOOLS = [
     get_market_data,
     get_portfolio_snapshot,
@@ -258,6 +280,7 @@ ALL_TOOLS = [
     get_trade_history,
     lookup_symbol,
     create_activity,
+    add_to_watchlist,
     portfolio_analysis,
     transaction_categorize,
     tax_estimate,

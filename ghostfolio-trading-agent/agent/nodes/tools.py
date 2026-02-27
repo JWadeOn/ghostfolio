@@ -27,6 +27,7 @@ from agent.tools.portfolio_analysis import portfolio_analysis
 from agent.tools.transaction_categorize import transaction_categorize
 from agent.tools.tax_estimate import tax_estimate
 from agent.tools.compliance_check import compliance_check
+from agent.tools.watchlist import add_to_watchlist
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ TOOL_REGISTRY = {
     "transaction_categorize": transaction_categorize,
     "tax_estimate": tax_estimate,
     "compliance_check": compliance_check,
+    "add_to_watchlist": add_to_watchlist,
 }
 
 GHOSTFOLIO_TOOLS = frozenset({
@@ -55,6 +57,7 @@ GHOSTFOLIO_TOOLS = frozenset({
     "check_risk",
     "lookup_symbol",
     "create_activity",
+    "add_to_watchlist",
     "portfolio_analysis",
     "transaction_categorize",
     "compliance_check",

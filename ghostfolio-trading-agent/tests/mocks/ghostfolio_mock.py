@@ -40,6 +40,9 @@ class MockGhostfolioClient:
     def get_watchlist(self):
         return []
 
+    def create_watchlist_item(self, data_source: str, symbol: str):
+        return {"success": True, "symbol": symbol, "data_source": data_source}
+
     def lookup_symbol(self, query: str):
         return get_mock_symbol_lookup(query)
 
