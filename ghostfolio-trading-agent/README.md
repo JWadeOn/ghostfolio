@@ -470,6 +470,39 @@ Eval cases live in **`tests/eval/dataset.py`** in a LangSmith-compatible format.
 
 To add or change cases, edit `tests/eval/dataset.py`. Each case can specify `expected_intent`, `expected_tools`, `expected_output_contains`, `should_contain`, `should_not_contain`, `exact_tools`, `ground_truth_contains`, and `category`.
 
+### Golden set (baseline correctness)
+
+The **golden set** is a curated set of 15 cases that act as a first line of defense. They are fast, deterministic, and binary — if any golden case fails, something is fundamentally broken. Run them after every commit.
+
+Golden checks use four dimensions (all code-based, no LLM scoring):
+
+| Check                   | What it catches                                       |
+| ----------------------- | ----------------------------------------------------- |
+| **Tool selection**      | Agent called the wrong tool or missed a required one  |
+| **Source citation**     | Agent cited the wrong data source in its response     |
+| **Content validation**  | Response is missing key facts or terms                |
+| **Negative validation** | Agent hallucinated, gave up, or produced empty output |
+
+**Run the golden set:**
+
+```bash
+python3 tests/eval/run_golden.py
+```
+
+Or via pytest (one test per case for easy failure diagnosis):
+
+```bash
+pytest tests/eval/test_golden.py -q
+```
+
+Optionally write a JSON report for CI:
+
+```bash
+python3 tests/eval/run_golden.py --report reports/golden-results.json
+```
+
+Exit code 0 = all 15 pass; 1 = at least one failure. Cases live in `tests/eval/golden_cases.py`; check logic in `tests/eval/golden_checks.py`.
+
 ### How to run evals
 
 From the **`ghostfolio-trading-agent`** directory:

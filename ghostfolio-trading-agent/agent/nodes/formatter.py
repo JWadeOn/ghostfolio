@@ -58,7 +58,7 @@ def _guess_source_tool(claim: str, tool_results: dict) -> str | None:
     claim_lower = claim.lower()
 
     keyword_map = {
-        "get_market_data": ["rsi", "sma", "ema", "macd", "bollinger", "atr", "price", "volume", "close"],
+        "get_market_data": ["rsi", "sma", "ema", "macd", "bollinger", "atr", "price", "volume", "close", "trading", "currently"],
         "detect_regime": ["regime", "trend", "volatility", "breadth", "correlation", "rotation", "vix"],
         "get_portfolio_snapshot": ["portfolio", "holding", "cash", "invested", "account", "position"],
         "scan_strategies": ["score", "signal", "breakout", "reversion", "momentum", "entry", "stop", "target"],
