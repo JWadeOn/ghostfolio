@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from agent.state import AgentState
+from agent.observability import aggregate_token_usage, make_trace_entry
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,8 @@ def _guess_source_tool(claim: str, tool_results: dict) -> str | None:
         "detect_regime": ["regime", "trend", "volatility", "breadth", "correlation", "rotation", "vix"],
         "get_portfolio_snapshot": ["portfolio", "holding", "cash", "invested", "account", "position"],
         "scan_strategies": ["score", "signal", "breakout", "reversion", "momentum", "entry", "stop", "target"],
-        "check_risk": ["risk", "violation", "sector", "concentration", "position size"],
+        "portfolio_guardrails_check": ["risk", "violation", "sector", "concentration", "position size", "cash buffer"],
+        "trade_guardrails_check": ["risk", "violation", "sector", "concentration", "position size", "stop loss"],
         "get_trade_history": ["win rate", "profit factor", "p&l", "trade", "loss"],
     }
 
@@ -86,7 +88,11 @@ def _build_intent_data(intent: str, tool_results: dict) -> dict:
             "matches": scan.get("matches", 0),
         }
     elif intent == "risk_check":
-        return tool_results.get("check_risk", {})
+        return (
+            tool_results.get("trade_guardrails_check")
+            or tool_results.get("portfolio_guardrails_check")
+            or tool_results.get("check_risk", {})
+        )
     elif intent == "journal_analysis":
         history = tool_results.get("get_trade_history", {})
         return {
@@ -113,28 +119,41 @@ def format_output_node(state: AgentState) -> dict[str, Any]:
     verification = state.get("verification_result", {})
     tool_results = state.get("tool_results", {})
     tools_called = state.get("tools_called", [])
+    token_usage = state.get("token_usage") or {}
+    node_latencies = state.get("node_latencies") or {}
+    error_log = state.get("error_log") or []
+    trace_log = list(state.get("trace_log") or [])
 
     confidence = verification.get("confidence", 50)
     issues = verification.get("issues", [])
 
-    # Build warnings
     warnings = []
     if not verification.get("passed", True):
         warnings.append("Response had verification issues — some data points may not be fully verified.")
         warnings.extend(issues)
 
-    # Check data freshness
     regime = state.get("regime")
     if regime and isinstance(regime, dict):
         ts = regime.get("timestamp")
         if ts:
             warnings.append(f"Regime data from: {ts}")
 
-    # Build citations
     citations = _extract_citations(synthesis, tool_results)
-
-    # Build intent-specific data
     data = _build_intent_data(intent, tool_results)
+
+    token_totals = aggregate_token_usage(token_usage)
+
+    trace_log.append(make_trace_entry(
+        "format_output",
+        output_summary=f"confidence={confidence}, warnings={len(warnings)}",
+    ))
+
+    observability = {
+        "token_usage": {**token_usage, "total": token_totals},
+        "node_latencies": node_latencies,
+        "error_log": error_log,
+        "trace_log": trace_log,
+    }
 
     response = {
         "summary": synthesis,
@@ -145,6 +164,7 @@ def format_output_node(state: AgentState) -> dict[str, Any]:
         "warnings": warnings if warnings else [],
         "tools_used": tools_called,
         "disclaimer": DISCLAIMER,
+        "observability": observability,
     }
 
     return {"response": response}

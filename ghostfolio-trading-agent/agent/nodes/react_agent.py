@@ -12,23 +12,48 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from agent.config import get_settings
 from agent.state import AgentState
 from agent.tools.langchain_tools import get_tools
+from agent.observability import (
+    extract_token_usage, track_latency, make_error_entry, make_trace_entry,
+    ErrorCategory,
+)
 
 logger = logging.getLogger(__name__)
 
 MAX_REACT_STEPS = 10
 
-REACT_SYSTEM_PROMPT = """You are a trading intelligence agent with access to these tools: get_market_data, get_portfolio_snapshot, detect_regime, scan_strategies, check_risk, get_trade_history, lookup_symbol, create_activity.
+REACT_SYSTEM_PROMPT = """You are a trading intelligence agent for **Phase 1: long-term investors only**. Your scope is portfolio-level questions: health, trade evaluation, performance review, tax implications, opportunity assessment, and compliance. Do NOT use strategy scanning, regime detection, or technical-setup scanning — those are out of scope for this phase.
 
-Your goal: answer the trader's question by calling the right tools in the right order, then provide a clear final answer.
+PRIORITY TOOLS (use these to answer the user):
+- get_portfolio_snapshot, portfolio_guardrails_check, trade_guardrails_check, get_market_data, get_trade_history, lookup_symbol, create_activity, portfolio_analysis, transaction_categorize, tax_estimate, compliance_check.
 
-RECORDING TRANSACTIONS: You have the create_activity tool. When the user asks to "record a transaction", "log a trade", "add a buy/sell", or "save a transaction", you MUST use create_activity. Do NOT say you do not have access to portfolio management tools or that you cannot record transactions — you can, using create_activity. If the user has not provided symbol, quantity, unit_price, date, and currency, reply with a single short message asking for those details (e.g. "I can record that. What symbol, how many shares, at what price, and on what date? Currency (e.g. USD)?") then when they reply, call create_activity with the details. For BUY/SELL use activity_type "BUY" or "SELL". You may call get_portfolio_snapshot first to get account_id if the user has multiple accounts.
+Your goal: answer the user's question by calling the right tools in the right order, then provide a clear final answer.
+
+PHASE 1 USE CASES AND TOOL CHOICE:
+1. **Portfolio health** ("Am I too concentrated?", "Portfolio health?", "Within my limits?"): get_portfolio_snapshot and portfolio_guardrails_check. No arguments needed for portfolio_guardrails_check.
+2. **Trade evaluation** ("Should I buy/sell X?", "Can I add $X of Y?"): get_portfolio_snapshot, trade_guardrails_check (symbol, side), and get_market_data for that symbol when discussing price or viability.
+3. **Performance review** ("How have I done?", "Best performers?", "Win rate?"): get_trade_history and optionally transaction_categorize for patterns (DCA, dividends, fees).
+4. **Tax implications** ("Tax if I sell?", "Short vs long-term gains?"): tax_estimate (income/deductions if needed), compliance_check (capital_gains, etc.), get_trade_history as needed.
+5. **Opportunity assessment** ("Is X a good addition?", "Does Y fit my portfolio?"): get_market_data for the symbol, portfolio_guardrails_check, and compliance_check as needed.
+6. **Compliance** ("Wash sale?", "Does this violate rules?"): compliance_check and get_portfolio_snapshot (or get_trade_history) for context.
+
+TOOL GUIDANCE:
+- portfolio_guardrails_check: Portfolio-level risk, concentration, cash buffer, diversification. No arguments.
+- trade_guardrails_check: Single-trade validation (position size, cash, sector, stop loss). Requires symbol and side (buy/sell).
+- portfolio_analysis: Per-account holdings, allocation, performance. Omit account_id for full portfolio.
+- transaction_categorize: Categorize orders, detect patterns (DCA, recurring dividends, fee clusters). Pass transactions or leave blank to fetch from Ghostfolio.
+- tax_estimate: US federal tax from income and deductions. Informational only.
+- compliance_check: wash_sale, capital_gains, tax_loss_harvesting. NOT for portfolio risk limits.
+- get_market_data: Use when you need current price, returns, or volatility for a symbol (e.g. for trade evaluation or opportunity assessment). Do NOT use for regime_check or opportunity_scan; use only to support Phase 1 use cases above.
+
+RECORDING TRANSACTIONS: When the user asks to "record a transaction", "log a trade", "add a buy/sell", or "save a transaction", use create_activity. If symbol, quantity, unit_price, date, or currency is missing, ask once for those details, then call create_activity with activity_type "BUY" or "SELL". You may call get_portfolio_snapshot first to get account_id if needed.
 
 RULES:
 - Call tools as needed. You may call one or more tools per step and may take multiple steps.
-- When you have gathered enough data, stop calling tools and provide your final answer as plain text.
+- When you have enough data, stop calling tools and give your final answer in plain text.
 - Do NOT make up numbers. If you need data, call a tool.
-- Be efficient: don't call tools you don't need.
+- Be efficient: only call tools needed for the user's question.
 - If a tool returns an error, acknowledge it and work with what you have.
+- Stay within Phase 1: do not invoke or rely on regime detection, strategy scanning, or technical-setup scanning.
 
 AVAILABLE CONTEXT (may be empty if stale/missing):
 {context_block}
@@ -71,8 +96,13 @@ def react_agent_node(state: AgentState) -> dict[str, Any]:
     intent = state.get("intent", "general")
     extracted_params = state.get("extracted_params", {})
     react_step = state.get("react_step", 0)
+    token_usage = dict(state.get("token_usage") or {})
+    node_latencies = dict(state.get("node_latencies") or {})
+    error_log = list(state.get("error_log") or [])
+    trace_log = list(state.get("trace_log") or [])
 
     context_block = _build_context_block(state)
+    step_key = f"react_agent_{react_step}"
 
     system_text = REACT_SYSTEM_PROMPT.format(
         context_block=context_block,
@@ -84,37 +114,64 @@ def react_agent_node(state: AgentState) -> dict[str, Any]:
         system_text += FINAL_STEP_ADDENDUM
 
     system_msg = SystemMessage(content=system_text)
-
     llm_messages = [system_msg] + messages
 
-    try:
-        llm = ChatAnthropic(
-            model="claude-sonnet-4-20250514",
-            api_key=settings.anthropic_api_key,
-            max_tokens=2048,
-            temperature=0,
-        )
+    with track_latency() as timing:
+        try:
+            llm = ChatAnthropic(
+                model="claude-sonnet-4-20250514",
+                api_key=settings.anthropic_api_key,
+                max_tokens=2048,
+                temperature=0,
+            )
 
-        if react_step < MAX_REACT_STEPS:
-            tools = get_tools()
-            llm_with_tools = llm.bind_tools(tools)
-        else:
-            llm_with_tools = llm
+            if react_step < MAX_REACT_STEPS:
+                tools = get_tools()
+                llm_with_tools = llm.bind_tools(tools)
+            else:
+                llm_with_tools = llm
 
-        response: AIMessage = llm_with_tools.invoke(llm_messages)
-        logger.info(
-            "ReAct step %d: tool_calls=%d, content_len=%d",
-            react_step,
-            len(response.tool_calls) if hasattr(response, "tool_calls") and response.tool_calls else 0,
-            len(response.content) if response.content else 0,
-        )
+            response: AIMessage = llm_with_tools.invoke(llm_messages)
+            token_usage[step_key] = extract_token_usage(response)
 
-        return {"messages": [response]}
+            num_tool_calls = len(response.tool_calls) if hasattr(response, "tool_calls") and response.tool_calls else 0
+            logger.info(
+                "ReAct step %d: tool_calls=%d, content_len=%d",
+                react_step,
+                num_tool_calls,
+                len(response.content) if response.content else 0,
+            )
 
-    except Exception as e:
-        logger.error("ReAct agent LLM call failed: %s", e)
-        error_msg = AIMessage(content=f"I encountered an error during analysis: {e}")
-        return {"messages": [error_msg]}
+            tool_names = [tc["name"] for tc in (response.tool_calls or [])] if response.tool_calls else []
+            trace_log.append(make_trace_entry(
+                step_key,
+                input_summary=f"step={react_step}, intent={intent}",
+                output_summary=f"tool_calls={tool_names}" if tool_names else "final_answer",
+                metadata={"tool_calls": num_tool_calls},
+            ))
+
+            node_latencies[step_key] = timing.get("elapsed_seconds", 0)
+            return {
+                "messages": [response],
+                "token_usage": token_usage,
+                "node_latencies": node_latencies,
+                "error_log": error_log,
+                "trace_log": trace_log,
+            }
+
+        except Exception as e:
+            logger.error("ReAct agent LLM call failed: %s", e)
+            error_log.append(make_error_entry(step_key, e, ErrorCategory.LLM))
+            trace_log.append(make_trace_entry(step_key, output_summary=f"error: {e}"))
+            node_latencies[step_key] = timing.get("elapsed_seconds", 0)
+            error_msg = AIMessage(content=f"I encountered an error during analysis: {e}")
+            return {
+                "messages": [error_msg],
+                "token_usage": token_usage,
+                "node_latencies": node_latencies,
+                "error_log": error_log,
+                "trace_log": trace_log,
+            }
 
 
 def route_after_react(state: AgentState) -> str:

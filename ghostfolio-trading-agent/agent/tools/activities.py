@@ -28,8 +28,8 @@ def create_activity(
     """Record a portfolio activity in Ghostfolio (buy, sell, dividend, fee, etc.).
 
     Builds a CreateOrderDto payload and calls GhostfolioClient.create_order.
-    For "record a trade" flows, the user may first run check_risk and optionally
-    get_portfolio_snapshot to obtain account_id when they have multiple accounts.
+    For "record a trade" flows, the user may first run trade_guardrails_check and
+    optionally get_portfolio_snapshot to obtain account_id when they have multiple accounts.
 
     Args:
         activity_type: One of BUY, SELL, DIVIDEND, FEE, INTEREST, LIABILITY.
@@ -101,4 +101,11 @@ def create_activity(
         payload["comment"] = str(comment).strip()
 
     result = client.create_order(payload)
+    if isinstance(result, dict) and "error" not in result:
+        qty = result.get("quantity", payload.get("quantity", 0)) or 0
+        price = result.get("unitPrice", payload.get("unitPrice", 0)) or 0
+        if qty and price:
+            total = round(float(qty) * float(price), 2)
+            result["total_value"] = total
+            result["total_cost"] = total
     return result

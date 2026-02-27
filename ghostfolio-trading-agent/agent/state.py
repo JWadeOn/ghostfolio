@@ -37,3 +37,9 @@ class AgentState(TypedDict):
 
     # Final output
     response: dict | None
+
+    # Observability: token usage, latency, errors, trace
+    token_usage: dict
+    node_latencies: dict
+    error_log: list[dict]
+    trace_log: list[dict]

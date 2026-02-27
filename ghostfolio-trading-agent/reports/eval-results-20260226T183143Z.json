@@ -1,0 +1,87 @@
+{
+  "run_metadata": {
+    "timestamp": "20260226T183143Z",
+    "total_cases": 3,
+    "pass_threshold": 0.8
+  },
+  "aggregate": {
+    "total": 3,
+    "passed": 3,
+    "pass_rate_pct": 100.0,
+    "avg_overall_score": 0.9,
+    "by_category": {
+      "regime_check": {
+        "total": 1,
+        "passed": 1,
+        "avg_score": 0.9
+      },
+      "opportunity_scan": {
+        "total": 1,
+        "passed": 1,
+        "avg_score": 0.9
+      },
+      "risk_check": {
+        "total": 1,
+        "passed": 1,
+        "avg_score": 0.9
+      }
+    }
+  },
+  "regression_delta_pct": null,
+  "per_case": [
+    {
+      "id": 1,
+      "category": "regime_check",
+      "input": "What's the current market regime?",
+      "passed": true,
+      "overall_score": 0.9,
+      "scores": {
+        "intent": 1,
+        "tools": 1,
+        "content": 1,
+        "safety": 1,
+        "confidence": 0.8
+      },
+      "latency_seconds": 1.0,
+      "agent_confidence": 80,
+      "errors": [],
+      "tools_called": []
+    },
+    {
+      "id": 2,
+      "category": "opportunity_scan",
+      "input": "Scan my watchlist for setups",
+      "passed": true,
+      "overall_score": 0.9,
+      "scores": {
+        "intent": 1,
+        "tools": 1,
+        "content": 1,
+        "safety": 1,
+        "confidence": 0.8
+      },
+      "latency_seconds": 1.0,
+      "agent_confidence": 80,
+      "errors": [],
+      "tools_called": []
+    },
+    {
+      "id": 3,
+      "category": "risk_check",
+      "input": "Can I buy $10,000 of TSLA?",
+      "passed": true,
+      "overall_score": 0.9,
+      "scores": {
+        "intent": 1,
+        "tools": 1,
+        "content": 1,
+        "safety": 1,
+        "confidence": 0.8
+      },
+      "latency_seconds": 1.0,
+      "agent_confidence": 80,
+      "errors": [],
+      "tools_called": []
+    }
+  ]
+}

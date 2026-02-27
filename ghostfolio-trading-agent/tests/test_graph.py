@@ -23,6 +23,10 @@ def _make_initial_state(message: str) -> dict:
         "verification_result": None,
         "verification_attempts": 0,
         "response": None,
+        "token_usage": {},
+        "node_latencies": {},
+        "error_log": [],
+        "trace_log": [],
     }
 
 
@@ -101,7 +105,7 @@ class TestReActAgentGraph:
         )
         step2 = AIMessage(
             content="",
-            tool_calls=[{"name": "check_risk", "args": {"symbol": "AAPL", "action": "buy"}, "id": "call_2"}],
+            tool_calls=[{"name": "trade_guardrails_check", "args": {"symbol": "AAPL", "side": "buy"}, "id": "call_2"}],
         )
         step3 = AIMessage(content="Risk check complete for AAPL.")
 
@@ -120,5 +124,5 @@ class TestReActAgentGraph:
         assert result["response"] is not None
         assert result["intent"] == "risk_check"
         assert "get_portfolio_snapshot" in result["tools_called"]
-        assert "check_risk" in result["tools_called"]
+        assert "trade_guardrails_check" in result["tools_called"]
         assert result["react_step"] >= 2

@@ -1,12 +1,10 @@
-"""Tool 5: check_risk — validate position size, sector concentration, and correlation."""
+"""Portfolio and trade guardrails — position sizing, concentration, correlation, cash checks."""
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
-
-import numpy as np
-import yfinance as yf
 
 from agent.tools.portfolio import get_portfolio_snapshot
 from agent.tools.market_data import get_market_data
@@ -17,29 +15,76 @@ logger = logging.getLogger(__name__)
 MAX_POSITION_PCT = 5.0
 MAX_SECTOR_PCT = 30.0
 MAX_CORRELATION = 0.7
+DEFAULT_STOP_LOSS_PCT = 2.0
 
 
 def _get_sector(symbol: str) -> str | None:
-    """Get sector for a symbol from yfinance."""
+    """Get sector for a symbol from yfinance (imported lazily to avoid numpy SIGFPE on macOS)."""
     try:
+        import yfinance as yf
         info = yf.Ticker(symbol).info
         return info.get("sector", None)
     except Exception:
         return None
 
 
-def _portfolio_level_risk(
-    total_value: float,
-    total_cash: float,
-    holdings: list[dict[str, Any]],
+def _normalize_weight(raw_weight: float) -> float:
+    """Normalize weight to 0-100 scale (Ghostfolio may return 0-1 or 0-100)."""
+    if (raw_weight or 0) < 1:
+        return (raw_weight or 0) * 100
+    return raw_weight or 0
+
+
+def _compute_hold_period(symbol: str, client: GhostfolioClient | None) -> int | None:
+    """Compute days held from earliest open buy for *symbol*."""
+    if client is None:
+        return None
+    try:
+        orders_data = client.get_orders(symbol=symbol)
+        raw = (
+            orders_data.get("activities", [])
+            if isinstance(orders_data, dict) and "activities" in orders_data
+            else (orders_data if isinstance(orders_data, list) else [])
+        )
+        buy_dates = []
+        for o in raw:
+            if (o.get("type") or "").upper() == "BUY" and o.get("date"):
+                buy_dates.append(o["date"][:10])
+        if not buy_dates:
+            return None
+        earliest = min(buy_dates)
+        buy_dt = datetime.strptime(earliest, "%Y-%m-%d")
+        return (datetime.now() - buy_dt).days
+    except Exception as e:
+        logger.warning("Failed to compute hold period for %s: %s", symbol, e)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# portfolio_guardrails_check
+# ---------------------------------------------------------------------------
+
+def portfolio_guardrails_check(
+    client: GhostfolioClient | None = None,
 ) -> dict[str, Any]:
-    """Assess portfolio-level risk (concentration, cash, diversification) when no specific trade is proposed."""
-    violations = []
-    warnings = []
+    """Assess portfolio-level risk: concentration, cash buffer, diversification.
+
+    No symbol or trade amount — this is a health check on the portfolio itself.
+    """
+    portfolio = get_portfolio_snapshot(client)
+
+    if isinstance(portfolio, dict) and "error" in portfolio and not portfolio.get("partial"):
+        return {"error": portfolio["error"], "passed": False}
+
+    total_value = portfolio.get("summary", {}).get("total_value", 0)
+    total_cash = portfolio.get("summary", {}).get("total_cash", 0)
+    holdings = portfolio.get("holdings", [])
+
+    violations: list[dict] = []
+    warnings: list[dict] = []
     cash_pct = (total_cash / total_value * 100) if total_value > 0 else 0
     holding_count = len(holdings)
 
-    # Cash buffer
     if cash_pct < 5 and total_value > 0:
         violations.append({
             "rule": "zero_cash",
@@ -54,12 +99,11 @@ def _portfolio_level_risk(
             "recommendation": "Aim for 5-10% cash buffer",
         })
 
-    # Concentration: single position or few positions
     if holding_count == 0:
-        pass  # No holdings
+        pass
     elif holding_count == 1:
         h = holdings[0]
-        weight = h.get("weight", 0) * 100 if (h.get("weight", 0) or 0) < 1 else (h.get("weight", 0) or 0)
+        weight = _normalize_weight(h.get("weight", 0))
         violations.append({
             "rule": "concentration",
             "message": f"Single holding represents {weight:.1f}% of portfolio",
@@ -68,7 +112,7 @@ def _portfolio_level_risk(
         })
     else:
         for h in holdings:
-            weight = h.get("weight", 0) * 100 if (h.get("weight", 0) or 0) < 1 else (h.get("weight", 0) or 0)
+            weight = _normalize_weight(h.get("weight", 0))
             if weight > MAX_POSITION_PCT:
                 violations.append({
                     "rule": "position_size",
@@ -78,11 +122,10 @@ def _portfolio_level_risk(
                     "limit": MAX_POSITION_PCT,
                 })
 
-    # Sector concentration across existing holdings
     sector_weights: dict[str, float] = {}
     for h in holdings:
         sym = h.get("symbol")
-        weight = h.get("weight", 0) * 100 if (h.get("weight", 0) or 0) < 1 else (h.get("weight", 0) or 0)
+        weight = _normalize_weight(h.get("weight", 0))
         if not sym:
             continue
         sector = _get_sector(sym)
@@ -101,7 +144,6 @@ def _portfolio_level_risk(
     passed = len(violations) == 0
     return {
         "passed": passed,
-        "symbol": None,
         "portfolio_level": True,
         "violations": violations,
         "warnings": warnings,
@@ -114,17 +156,18 @@ def _portfolio_level_risk(
     }
 
 
+# ---------------------------------------------------------------------------
+# trade_guardrails_check
+# ---------------------------------------------------------------------------
+
 def _evaluate_sell(
     symbol: str,
     total_value: float,
     total_cash: float,
     holdings: list[dict[str, Any]],
+    client: GhostfolioClient | None = None,
 ) -> dict[str, Any]:
-    """
-    Evaluate whether to sell an existing position. Concentration and no cash
-    are reasons TO sell (diversification), not reasons to block. Return
-    passed=True when we recommend selling so synthesis does not report FAIL.
-    """
+    """Evaluate whether to sell an existing position."""
     position = None
     for h in holdings:
         if (h.get("symbol") or "").upper() == symbol.upper():
@@ -139,9 +182,7 @@ def _evaluate_sell(
             "symbol": symbol,
         }
 
-    weight = position.get("weight", 0)
-    if (weight or 0) < 1:
-        weight = (weight or 0) * 100
+    weight = _normalize_weight(position.get("weight", 0))
     value = position.get("value") or position.get("value_in_base_currency") or 0
     cost_basis = position.get("investment", 0)
     if cost_basis and cost_basis > 0:
@@ -156,13 +197,10 @@ def _evaluate_sell(
     for h in holdings:
         s = _get_sector(h.get("symbol", ""))
         if s and s == sector:
-            w = h.get("weight", 0) or 0
-            if w < 1:
-                w = w * 100
-            sector_weight += w
+            sector_weight += _normalize_weight(h.get("weight", 0))
 
-    reasons_to_sell = []
-    reasons_to_hold = []
+    reasons_to_sell: list[dict] = []
+    reasons_to_hold: list[dict] = []
 
     if weight > MAX_POSITION_PCT:
         reasons_to_sell.append({
@@ -182,7 +220,7 @@ def _evaluate_sell(
         reasons_to_sell.append({
             "rule": "no_cash_buffer",
             "message": f"Cash is {cash_pct:.1f}% of portfolio",
-            "recommendation": "Selling part of this position would create a cash buffer for opportunities or rebalancing",
+            "recommendation": "Selling part of this position would create a cash buffer",
         })
     if sector_weight > MAX_SECTOR_PCT and sector:
         reasons_to_sell.append({
@@ -196,6 +234,14 @@ def _evaluate_sell(
     recommend_sell = len(reasons_to_sell) > 0
     cash_after_full_sell = round(total_cash + value, 2)
     portfolio_after_sell_value = round(total_value - value, 2) if total_value else 0
+
+    hold_period = _compute_hold_period(symbol, client)
+
+    stop_loss_level = None
+    if cost_basis and cost_basis > 0:
+        qty = position.get("quantity", 0) or 1
+        avg_cost = cost_basis / qty
+        stop_loss_level = round(avg_cost * (1 - DEFAULT_STOP_LOSS_PCT / 100), 2)
 
     return {
         "passed": recommend_sell,
@@ -214,6 +260,8 @@ def _evaluate_sell(
         "reasons_to_sell": reasons_to_sell,
         "reasons_to_hold": reasons_to_hold,
         "recommend_sell": recommend_sell,
+        "hold_period": hold_period,
+        "stop_loss_level": stop_loss_level,
         "portfolio_after_sell": {
             "portfolio_value": portfolio_after_sell_value,
             "cash_after_full_sell": cash_after_full_sell,
@@ -227,29 +275,17 @@ def _evaluate_sell(
     }
 
 
-def check_risk(
-    symbol: str | None = None,
-    direction: str = "LONG",
-    action: str = "buy",
+def trade_guardrails_check(
+    symbol: str,
+    side: str = "buy",
     position_size_pct: float | None = None,
     dollar_amount: float | None = None,
     client: GhostfolioClient | None = None,
 ) -> dict[str, Any]:
-    """
-    Check if a proposed trade fits portfolio risk parameters, or assess portfolio-level risk when no symbol is given.
-    When action='sell', evaluates whether to sell an existing position (concentration/cash = reasons TO sell).
+    """Check if a proposed buy or sell fits portfolio guardrails.
 
-    Args:
-        symbol: Ticker symbol to trade; if None, runs portfolio-level risk assessment (concentration, cash, diversification).
-        direction: "LONG" or "SHORT"
-        action: "buy" (default) or "sell" — sell uses sell-specific logic (reasons_to_sell, P&L, portfolio after sale).
-        position_size_pct: Proposed position as % of portfolio (alternative to dollar_amount)
-        dollar_amount: Proposed dollar amount (alternative to position_size_pct)
-        client: Optional GhostfolioClient
-
-    Returns:
-        Dict with passed (bool), violations list, and suggested adjustments.
-        When symbol is None, returns portfolio-level risk (no proposed trade).
+    For buys: position size, sector, correlation, cash, suggested size, stop loss.
+    For sells: reasons to sell/hold, P&L, hold period, stop loss, portfolio after.
     """
     portfolio = get_portfolio_snapshot(client)
 
@@ -260,15 +296,11 @@ def check_risk(
     total_cash = portfolio.get("summary", {}).get("total_cash", 0)
     holdings = portfolio.get("holdings", [])
 
-    # Sell evaluation: different logic — concentration/cash are reasons TO sell
-    if (action or "buy").lower() == "sell" and symbol:
-        return _evaluate_sell(symbol, total_value, total_cash, holdings)
+    if (side or "buy").lower() == "sell":
+        return _evaluate_sell(symbol, total_value, total_cash, holdings, client)
 
-    # Portfolio-level risk assessment when no symbol is provided
-    if symbol is None or symbol == "":
-        return _portfolio_level_risk(total_value, total_cash, holdings)
+    # --- Buy path ---
 
-    # Compute proposed position size
     if dollar_amount and total_value > 0:
         position_size_pct = (dollar_amount / total_value) * 100
     elif position_size_pct and total_value > 0:
@@ -277,14 +309,13 @@ def check_risk(
         position_size_pct = 5.0
         dollar_amount = total_value * 0.05 if total_value > 0 else 0
 
-    violations = []
-    warnings = []
+    violations: list[dict] = []
+    warnings: list[dict] = []
 
-    # 1. Position size check
-    existing_weight = 0
+    existing_weight = 0.0
     for h in holdings:
         if h.get("symbol", "").upper() == symbol.upper():
-            existing_weight = h.get("weight", 0) * 100 if h.get("weight", 0) < 1 else h.get("weight", 0)
+            existing_weight = _normalize_weight(h.get("weight", 0))
 
     proposed_total = existing_weight + position_size_pct
     if proposed_total > MAX_POSITION_PCT:
@@ -296,17 +327,16 @@ def check_risk(
             "limit": MAX_POSITION_PCT,
         })
 
-    # 2. Sector concentration check
     target_sector = _get_sector(symbol)
     if target_sector:
-        sector_weight = 0
+        sector_weight = 0.0
         for h in holdings:
             h_sectors = h.get("sectors", [])
             for s in h_sectors:
-                if s.get("name", "").lower() == target_sector.lower():
-                    sector_weight += h.get("weight", 0) * 100 if h.get("weight", 0) < 1 else h.get("weight", 0)
+                sector_name = s.get("name", s) if isinstance(s, dict) else s
+                if isinstance(sector_name, str) and sector_name.lower() == target_sector.lower():
+                    sector_weight += _normalize_weight(h.get("weight", 0))
                     break
-
         proposed_sector = sector_weight + position_size_pct
         if proposed_sector > MAX_SECTOR_PCT:
             violations.append({
@@ -317,14 +347,12 @@ def check_risk(
                 "limit": MAX_SECTOR_PCT,
             })
 
-    # 3. Correlation check
     holding_symbols = [h["symbol"] for h in holdings if h.get("symbol")]
     if holding_symbols:
-        all_syms = [symbol] + holding_symbols[:10]  # limit for performance
+        all_syms = [symbol] + holding_symbols[:10]
         try:
             data = get_market_data(all_syms, period="30d")
-            # Build returns matrix
-            closes = {}
+            closes: dict[str, dict] = {}
             for sym in all_syms:
                 sym_data = data.get(sym, [])
                 if isinstance(sym_data, list):
@@ -335,10 +363,10 @@ def check_risk(
                 df = pd.DataFrame(closes).dropna()
                 if len(df) >= 10:
                     returns = df.pct_change().dropna()
-                    # Skip constant columns to avoid degenerate correlation / SIGFPE
+                    import numpy as np
                     if returns.std().gt(0).sum() >= 2 and symbol in returns.columns:
                         for h_sym in holding_symbols[:10]:
-                            if h_sym in returns.columns and symbol in returns.columns:
+                            if h_sym in returns.columns:
                                 if returns[h_sym].std() > 0 and returns[symbol].std() > 0:
                                     corr = returns[symbol].corr(returns[h_sym])
                                     if not (np.isnan(corr) or np.isinf(corr)) and corr > MAX_CORRELATION:
@@ -349,9 +377,8 @@ def check_risk(
                                             "correlation": round(float(corr), 3),
                                         })
         except Exception as e:
-            logger.warning(f"Correlation check failed: {e}")
+            logger.warning("Correlation check failed: %s", e)
 
-    # 4. Existing exposure
     if existing_weight > 0:
         warnings.append({
             "rule": "existing_exposure",
@@ -359,7 +386,6 @@ def check_risk(
             "current_weight": existing_weight,
         })
 
-    # 5. Cash availability
     if dollar_amount and dollar_amount > total_cash:
         violations.append({
             "rule": "cash_available",
@@ -370,30 +396,65 @@ def check_risk(
 
     passed = len(violations) == 0
 
-    # Suggest adjusted size if violations
     suggested_size_pct = position_size_pct
     if not passed:
         for v in violations:
             if v["rule"] == "position_size":
                 max_add = max(0, MAX_POSITION_PCT - existing_weight)
                 suggested_size_pct = min(suggested_size_pct, max_add)
-            if v["rule"] == "cash_available":
-                if total_value > 0:
-                    suggested_size_pct = min(suggested_size_pct, (total_cash / total_value) * 100)
+            if v["rule"] == "cash_available" and total_value > 0:
+                suggested_size_pct = min(suggested_size_pct, (total_cash / total_value) * 100)
+
+    stop_loss_level = None
+    try:
+        md = get_market_data([symbol], period="5d")
+        sym_data = md.get(symbol, [])
+        if isinstance(sym_data, list) and sym_data:
+            current_price = sym_data[-1].get("close", 0)
+            if current_price > 0:
+                stop_loss_level = round(current_price * (1 - DEFAULT_STOP_LOSS_PCT / 100), 2)
+    except Exception:
+        pass
 
     return {
         "passed": passed,
         "symbol": symbol,
-        "direction": direction,
+        "action": "buy",
         "proposed_size_pct": round(position_size_pct, 2),
         "proposed_dollar": round(dollar_amount, 2) if dollar_amount else None,
         "violations": violations,
         "warnings": warnings,
         "suggested_size_pct": round(suggested_size_pct, 2),
         "suggested_dollar": round(total_value * suggested_size_pct / 100, 2) if total_value > 0 else None,
+        "stop_loss_level": stop_loss_level,
         "portfolio_summary": {
             "total_value": total_value,
             "total_cash": total_cash,
             "holding_count": len(holdings),
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Legacy wrapper — will be removed once all callers migrate
+# ---------------------------------------------------------------------------
+
+def check_risk(
+    symbol: str | None = None,
+    direction: str = "LONG",
+    action: str = "buy",
+    position_size_pct: float | None = None,
+    dollar_amount: float | None = None,
+    client: GhostfolioClient | None = None,
+) -> dict[str, Any]:
+    """Legacy wrapper — delegates to portfolio_guardrails_check or trade_guardrails_check."""
+    if (action or "buy").lower() == "sell" and symbol:
+        return trade_guardrails_check(symbol, side="sell", client=client)
+    if symbol is None or symbol == "":
+        return portfolio_guardrails_check(client=client)
+    return trade_guardrails_check(
+        symbol, side="buy",
+        position_size_pct=position_size_pct,
+        dollar_amount=dollar_amount,
+        client=client,
+    )
