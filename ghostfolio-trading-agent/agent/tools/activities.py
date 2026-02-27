@@ -11,6 +11,43 @@ logger = logging.getLogger(__name__)
 
 VALID_ACTIVITY_TYPES = frozenset({"BUY", "SELL", "DIVIDEND", "FEE", "INTEREST", "LIABILITY"})
 
+DEFAULT_DATA_SOURCE = "FINANCIAL_MODELING_PREP"
+
+
+def _resolve_data_source(symbol: str, client: GhostfolioClient) -> str:
+    """Look up the symbol in Ghostfolio and return the best data source.
+
+    Falls back to DEFAULT_DATA_SOURCE if the lookup fails or returns no results.
+    """
+    try:
+        result = client.lookup_symbol(symbol)
+        items = result.get("items", []) if isinstance(result, dict) else []
+        for item in items:
+            ds = (item.get("dataSource") or "").strip()
+            sym = (item.get("symbol") or "").strip().upper()
+            if sym == symbol.strip().upper() and ds:
+                logger.info(
+                    "Resolved data_source for %s via symbol lookup: %s",
+                    symbol, ds,
+                )
+                return ds
+        if items:
+            ds = (items[0].get("dataSource") or "").strip()
+            if ds:
+                logger.info(
+                    "Resolved data_source for %s from first lookup match: %s",
+                    symbol, ds,
+                )
+                return ds
+    except Exception as e:
+        logger.warning("Symbol lookup for data_source resolution failed: %s", e)
+
+    logger.info(
+        "Could not resolve data_source for %s; defaulting to %s",
+        symbol, DEFAULT_DATA_SOURCE,
+    )
+    return DEFAULT_DATA_SOURCE
+
 
 def create_activity(
     activity_type: str,
@@ -84,6 +121,10 @@ def create_activity(
     if not date_str:
         return {"error": "date is required (ISO8601, e.g. 2025-02-26)."}
 
+    resolved_data_source = (data_source or "").strip()
+    if not resolved_data_source:
+        resolved_data_source = _resolve_data_source(symbol_str, client)
+
     payload: dict[str, Any] = {
         "currency": currency_str,
         "date": date_str,
@@ -92,11 +133,10 @@ def create_activity(
         "symbol": symbol_str,
         "type": activity_type_upper,
         "unitPrice": price,
+        "dataSource": resolved_data_source,
     }
     if account_id:
         payload["accountId"] = account_id.strip()
-    if data_source:
-        payload["dataSource"] = data_source.strip()
     if comment is not None and str(comment).strip():
         payload["comment"] = str(comment).strip()
 

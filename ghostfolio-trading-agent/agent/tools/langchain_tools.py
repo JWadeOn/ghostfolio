@@ -166,7 +166,7 @@ def create_activity(
         date: Trade date as ISO8601 (e.g. "2025-02-26" or "2025-02-26T12:00:00Z").
         account_id: Optional; use when user has multiple accounts (from get_portfolio_snapshot).
         fee: Fee/commission (default 0).
-        data_source: Optional; for stocks use "YAHOO" if not specified.
+        data_source: Optional; auto-resolved from Ghostfolio symbol lookup if not provided. Only set explicitly to override.
         comment: Optional note.
     """
     return _create_activity(

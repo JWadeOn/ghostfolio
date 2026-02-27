@@ -174,9 +174,15 @@ def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, 
             total_value = total_from_holdings
 
     # Total invested = cost basis (sum of what you paid). Prefer performance API, then sum from holdings, then compute from orders/activities.
+    cost_basis_source = "none"
     total_invested = perf.get("total_investment", 0)
+    if total_invested:
+        cost_basis_source = "performance_api"
+
     if total_invested == 0 and holdings:
         total_invested = sum((h.get("investment") or 0) for h in holdings)
+        if total_invested:
+            cost_basis_source = "holdings_sum"
 
     # If still 0, derive from Order table (activities) using unit price data
     if total_invested == 0 and holdings:
@@ -196,8 +202,19 @@ def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, 
                         if sym and sym in cost_by_symbol:
                             ho["investment"] = cost_by_symbol[sym]
                     total_invested = sum(cost_by_symbol.get(h.get("symbol"), 0) for h in holdings)
+                    if total_invested:
+                        cost_basis_source = "computed_from_orders"
         except Exception as e:
             logger.warning("Failed to compute cost basis from orders: %s", e)
+
+    if total_invested == 0 and holdings:
+        logger.warning(
+            "Cost basis is 0 for %d holding(s). All 3 sources failed: "
+            "performance API totalInvestment=0, holdings investment sum=0, "
+            "order-based computation=0. This usually means activities were "
+            "created without a valid dataSource (e.g. MANUAL with no price feed).",
+            len(holdings),
+        )
 
     return {
         "holdings": holdings,
@@ -207,6 +224,7 @@ def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, 
             "total_value": total_value,
             "total_cash": total_cash,
             "total_invested": total_invested,
+            "cost_basis_source": cost_basis_source,
             "net_pnl": perf.get("net_performance", 0),
             "net_pnl_pct": perf.get("net_performance_pct", 0),
             "holding_count": len(holdings),
