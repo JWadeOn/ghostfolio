@@ -483,6 +483,7 @@ python3 tests/eval/run_evals.py
   ```bash
   EVAL_USE_MOCKS=0 python3 tests/eval/run_evals.py
   ```
+  To get **predictable portfolio data** on a deployed Ghostfolio instance (e.g. Railway), seed it first with the Phase 1 mock dataset — see [Seeding Ghostfolio for live evals](#seeding-ghostfolio-for-live-evals).
 - **Consistency mode:** Run a subset of cases multiple times to check determinism:
   ```bash
   EVAL_CONSISTENCY_RUNS=2 EVAL_MODE=1 python3 tests/eval/run_evals.py
@@ -495,6 +496,45 @@ python3 tests/eval/run_evals.py
 - **LangSmith:** If `LANGCHAIN_API_KEY` is set, the run is logged as an experiment (dataset `ghostfolio-trading-agent-evals`, experiment name `trading-agent-v1` by default). Set `EVAL_VERSION=2` (or another value) to change the version suffix.
 
 The script prints pass/fail per case, overall pass rate, consistency results (if enabled), and the path of the written report.
+
+### Seeding Ghostfolio for live evals
+
+To run evals against a **live deployed instance** (e.g. Railway) with predictable portfolio state, seed Ghostfolio with the same data the mocks use.
+
+#### Prerequisites: Financial Modeling Prep data source
+
+The seed dataset uses **Financial Modeling Prep** (`FINANCIAL_MODELING_PREP`) as the data source. Yahoo Finance is blocked from cloud IPs (Railway, etc.), so FMP is used instead. Before seeding, ensure your Ghostfolio instance has:
+
+1. **`API_KEY_FINANCIAL_MODELING_PREP`** — sign up for a free API key at [financialmodelingprep.com](https://financialmodelingprep.com) (free tier: 250 requests/day).
+2. **`DATA_SOURCES`** must include `FINANCIAL_MODELING_PREP`. The default (`["COINGECKO","MANUAL","YAHOO"]`) does **not** include it. Set:
+   ```
+   DATA_SOURCES=["COINGECKO","MANUAL","YAHOO","FINANCIAL_MODELING_PREP"]
+   ```
+
+For **Railway**: add both env vars in the Railway dashboard. For **local development**: add them to the monorepo root `.env`.
+
+#### Seeding steps
+
+1. **Mock dataset:** `tests/eval/mock_dataset.json` defines the Phase 1 seed — 8 activities (BUY/SELL) across 5 symbols (AAPL, TSLA, GOOG, NVDA, MSFT). Expected net holdings after seeding: AAPL 600, TSLA 150, GOOG 500, NVDA 200, MSFT 150.
+
+2. **Seed script:** From the `ghostfolio-trading-agent` directory:
+
+   ```bash
+   # Use .env or set explicitly for your deployed instance
+   GHOSTFOLIO_API_URL=https://your-ghostfolio.up.railway.app \
+   GHOSTFOLIO_ACCESS_TOKEN=your-security-token \
+   python3 scripts/seed_ghostfolio_for_evals.py
+   ```
+
+   The script deletes existing orders for the authenticated user, then creates the seed activities. The token must have **createOrder** and **deleteOrder** permissions (default Ghostfolio user has these).
+
+   **MANUAL fallback warning:** If FMP symbol validation fails (e.g. API key not set or `DATA_SOURCES` missing FMP), the script falls back to `dataSource: "MANUAL"`. Ghostfolio stores MANUAL assets with **UUID-based symbols** (e.g. `1d580260-...` instead of `AAPL`), which breaks ticker-based lookups in the agent (e.g. `trade_guardrails_check` reports "You do not hold AAPL"). Watch the script output for "MANUAL fallback" messages — if you see them, fix the FMP configuration and re-seed.
+
+3. **Run evals:** After seeding, run evals against the live instance:
+   ```bash
+   EVAL_USE_MOCKS=0 python3 tests/eval/run_evals.py
+   ```
+   Portfolio and order data will match the seed; market data and symbol lookup still hit live services (yfinance and Ghostfolio).
 
 ### Reports and regression
 

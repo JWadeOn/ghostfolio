@@ -1,0 +1,101 @@
+{
+  "description": "Phase 1 eval mock dataset. Seed this into a live Ghostfolio instance so EVAL_USE_MOCKS=0 runs against predictable portfolio state. Uses FINANCIAL_MODELING_PREP so multiple orders per symbol (including SELLs) are supported; Ghostfolio must have API_KEY_FINANCIAL_MODELING_PREP set and FINANCIAL_MODELING_PREP in DATA_SOURCES. If FMP fails, the seed script falls back to MANUAL with one BUY per symbol.",
+  "activities": [
+    {
+      "symbol": "AAPL",
+      "type": "BUY",
+      "quantity": 1000,
+      "unitPrice": 263.55,
+      "date": "2026-02-23",
+      "currency": "USD",
+      "fee": 0,
+      "dataSource": "FINANCIAL_MODELING_PREP",
+      "comment": "eval seed"
+    },
+    {
+      "symbol": "AAPL",
+      "type": "SELL",
+      "quantity": 300,
+      "unitPrice": 274.06,
+      "date": "2026-02-24",
+      "currency": "USD",
+      "fee": 0,
+      "dataSource": "FINANCIAL_MODELING_PREP",
+      "comment": "eval seed"
+    },
+    {
+      "symbol": "AAPL",
+      "type": "SELL",
+      "quantity": 100,
+      "unitPrice": 268,
+      "date": "2026-02-20",
+      "currency": "USD",
+      "fee": 0,
+      "dataSource": "FINANCIAL_MODELING_PREP",
+      "comment": "eval seed"
+    },
+    {
+      "symbol": "TSLA",
+      "type": "BUY",
+      "quantity": 300,
+      "unitPrice": 393.43,
+      "date": "2026-02-23",
+      "currency": "USD",
+      "fee": 0,
+      "dataSource": "FINANCIAL_MODELING_PREP",
+      "comment": "eval seed"
+    },
+    {
+      "symbol": "TSLA",
+      "type": "SELL",
+      "quantity": 150,
+      "unitPrice": 407.46,
+      "date": "2026-02-24",
+      "currency": "USD",
+      "fee": 0,
+      "dataSource": "FINANCIAL_MODELING_PREP",
+      "comment": "eval seed"
+    },
+    {
+      "symbol": "GOOG",
+      "type": "BUY",
+      "quantity": 500,
+      "unitPrice": 314.1,
+      "date": "2026-02-23",
+      "currency": "USD",
+      "fee": 0,
+      "dataSource": "FINANCIAL_MODELING_PREP",
+      "comment": "eval seed"
+    },
+    {
+      "symbol": "NVDA",
+      "type": "BUY",
+      "quantity": 200,
+      "unitPrice": 480,
+      "date": "2026-02-20",
+      "currency": "USD",
+      "fee": 0,
+      "dataSource": "FINANCIAL_MODELING_PREP",
+      "comment": "eval seed"
+    },
+    {
+      "symbol": "MSFT",
+      "type": "BUY",
+      "quantity": 150,
+      "unitPrice": 415,
+      "date": "2026-02-15",
+      "currency": "USD",
+      "fee": 0,
+      "dataSource": "FINANCIAL_MODELING_PREP",
+      "comment": "eval seed"
+    }
+  ],
+  "expected_holdings_note": "After seeding (FINANCIAL_MODELING_PREP): AAPL 600, TSLA 150, GOOG 500, NVDA 200, MSFT 150. If fallback to MANUAL: same net positions (one BUY per symbol).",
+  "watchlist": [
+    { "dataSource": "FINANCIAL_MODELING_PREP", "symbol": "AAPL" },
+    { "dataSource": "FINANCIAL_MODELING_PREP", "symbol": "TSLA" },
+    { "dataSource": "FINANCIAL_MODELING_PREP", "symbol": "GOOG" },
+    { "dataSource": "FINANCIAL_MODELING_PREP", "symbol": "NVDA" },
+    { "dataSource": "FINANCIAL_MODELING_PREP", "symbol": "MSFT" }
+  ]
+}
