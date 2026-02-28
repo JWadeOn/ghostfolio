@@ -1,0 +1,65 @@
+[
+  {
+    "id": "irc_1091",
+    "label": "IRC \u00a71091 \u2014 Wash Sales",
+    "url": "https://www.law.cornell.edu/uscode/text/26/1091",
+    "excerpt": "Under IRC \u00a71091, a wash sale occurs when a taxpayer sells or trades stock or securities at a loss and, within 30 days before or after the sale, acquires substantially identical stock or securities. The disallowed loss is added to the cost basis of the replacement securities.",
+    "as_of": "2025"
+  },
+  {
+    "id": "irs_pub550",
+    "label": "IRS Publication 550 \u2014 Investment Income and Expenses",
+    "url": "https://www.irs.gov/publications/p550",
+    "excerpt": "Publication 550 covers wash sales (30-day rule), short sales, options, and the tax treatment of investment income including dividends, interest, and capital gains distributions.",
+    "as_of": "2025"
+  },
+  {
+    "id": "irc_1",
+    "label": "IRC \u00a71 \u2014 Income Tax Rates",
+    "url": "https://www.law.cornell.edu/uscode/text/26/1",
+    "excerpt": "IRC \u00a71 establishes the federal income tax rate brackets for individuals. For 2024, brackets are: 10%, 12%, 22%, 24%, 32%, 35%, and 37%. The applicable rate depends on taxable income and filing status (single, married filing jointly, head of household).",
+    "as_of": "2025"
+  },
+  {
+    "id": "irs_pub17",
+    "label": "IRS Publication 17 \u2014 Your Federal Income Tax",
+    "url": "https://www.irs.gov/publications/p17",
+    "excerpt": "Publication 17 is a comprehensive guide to federal income tax for individuals, covering filing requirements, income types, deductions, credits, and tax computation including capital gains and losses.",
+    "as_of": "2025"
+  },
+  {
+    "id": "irc_1222",
+    "label": "IRC \u00a71222 \u2014 Capital Gains and Losses Definitions",
+    "url": "https://www.law.cornell.edu/uscode/text/26/1222",
+    "excerpt": "IRC \u00a71222 defines short-term capital gain/loss as gain/loss from the sale of a capital asset held for not more than 1 year, and long-term capital gain/loss as gain/loss from the sale of a capital asset held for more than 1 year.",
+    "as_of": "2025"
+  },
+  {
+    "id": "irc_1h",
+    "label": "IRC \u00a71(h) \u2014 Capital Gains Tax Rates",
+    "url": "https://www.law.cornell.edu/uscode/text/26/1#h",
+    "excerpt": "IRC \u00a71(h) provides preferential tax rates for net long-term capital gains: 0% for taxpayers in the lowest brackets, 15% for most taxpayers, and 20% for high-income taxpayers. Short-term capital gains are taxed at ordinary income rates.",
+    "as_of": "2025"
+  },
+  {
+    "id": "irs_pub544",
+    "label": "IRS Publication 544 \u2014 Sales and Other Dispositions of Assets",
+    "url": "https://www.irs.gov/publications/p544",
+    "excerpt": "Publication 544 covers the tax treatment of sales, exchanges, and other dispositions of assets including capital assets, business property, and like-kind exchanges. It explains how to determine gain or loss on a sale.",
+    "as_of": "2025"
+  },
+  {
+    "id": "irs_pub551",
+    "label": "IRS Publication 551 \u2014 Basis of Assets",
+    "url": "https://www.irs.gov/publications/p551",
+    "excerpt": "Publication 551 explains how to determine the basis of assets for computing gain or loss. Cost basis is generally the amount paid for an asset, adjusted for wash sale disallowed losses, stock splits, and return of capital distributions.",
+    "as_of": "2025"
+  },
+  {
+    "id": "irs_topic409",
+    "label": "IRS Topic 409 \u2014 Capital Gains and Losses",
+    "url": "https://www.irs.gov/taxtopics/tc409",
+    "excerpt": "Topic 409 summarizes capital gains and losses rules: assets held more than 1 year produce long-term gains taxed at 0%, 15%, or 20%; assets held 1 year or less produce short-term gains taxed at ordinary rates. Net capital losses are deductible up to $3,000 per year ($1,500 if married filing separately).",
+    "as_of": "2025"
+  }
+]

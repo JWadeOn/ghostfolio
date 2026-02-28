@@ -212,3 +212,26 @@ def test_guardrails_check_uses_trade_guardrails_for_sell():
         {"trade_guardrails_check": {"sell_evaluation": True, "action": "sell"}},
     )
     assert not any("stop loss" in i.lower() for i in issues)
+
+
+def test_confidence_boosts_on_unified_guardrails_pass():
+    """_compute_confidence should recognize the unified guardrails_check tool name."""
+    state = {
+        "tool_results": {
+            "guardrails_check": {"passed": True, "violations": []},
+        },
+        "intent": "general",
+    }
+    from agent.nodes.verification import _compute_confidence
+    score = _compute_confidence(state)
+    assert score >= 60  # base 50 + 10 (tool success) + 10 (guardrails passed)
+
+
+def test_guardrails_check_uses_unified_for_sell():
+    """_check_guardrails should read sell_evaluation from unified guardrails_check."""
+    issues = _check_guardrails(
+        "You should sell your position in AAPL.",
+        "risk_check",
+        {"guardrails_check": {"sell_evaluation": True, "action": "sell"}},
+    )
+    assert not any("stop loss" in i.lower() for i in issues)

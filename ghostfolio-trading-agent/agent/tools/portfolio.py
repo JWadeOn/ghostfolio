@@ -51,22 +51,41 @@ def _cost_basis_from_activities(activities: list[dict]) -> dict[str, float]:
     return result
 
 
-def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, Any]:
+def get_portfolio_snapshot(
+    client: GhostfolioClient | None = None,
+    account_id: str | None = None,
+) -> dict[str, Any]:
     """
     Get a combined portfolio snapshot: holdings + performance + accounts.
+
+    Args:
+        client: Optional GhostfolioClient instance.
+        account_id: Optional account ID to scope the snapshot to a single account.
 
     Returns a structured dict with:
     - holdings: list of positions with symbol, quantity, value, weight, performance
     - performance: overall P&L, gross/net returns, current value
     - accounts: list of accounts with cash balances
+    - allocation: breakdown by symbol and asset class (weight %)
     - summary: total value, cash, invested, P&L
     """
     if client is None:
         client = GhostfolioClient()
 
+    # Validate account_id if provided
+    if account_id:
+        all_accounts = client.get_accounts()
+        known_ids = set()
+        if isinstance(all_accounts, list):
+            known_ids = {a.get("id") for a in all_accounts if a.get("id")}
+        if known_ids and account_id not in known_ids:
+            return {"error": f"Account '{account_id}' not found. Known accounts: {sorted(known_ids)}"}
+
+    accounts_filter = account_id if account_id else None
+
     with ThreadPoolExecutor(max_workers=3) as executor:
-        h_future = executor.submit(client.get_holdings)
-        p_future = executor.submit(client.get_performance)
+        h_future = executor.submit(client.get_holdings, accounts=accounts_filter) if accounts_filter else executor.submit(client.get_holdings)
+        p_future = executor.submit(client.get_performance, accounts=accounts_filter) if accounts_filter else executor.submit(client.get_performance)
         a_future = executor.submit(client.get_accounts)
         holdings_data = h_future.result()
         performance_data = p_future.result()
@@ -116,6 +135,19 @@ def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, 
             "data_source": h.get("dataSource", ""),
             "sectors": h.get("sectors", []),
         })
+
+    # Compute allocation breakdowns
+    alloc_by_symbol: dict[str, float] = {}
+    alloc_by_asset_class: dict[str, float] = {}
+    for h in holdings:
+        sym = h.get("symbol", "")
+        weight = h.get("weight", 0)
+        asset_class = h.get("asset_class", "unknown")
+        if sym:
+            alloc_by_symbol[sym] = round(weight, 2)
+        alloc_by_asset_class[asset_class] = round(
+            alloc_by_asset_class.get(asset_class, 0) + weight, 2
+        )
 
     # Always refresh market prices from live data so "current value" and "tax if I sell"
     # use actual market prices, not Ghostfolio's cached/cost-based values (which can
@@ -221,6 +253,11 @@ def get_portfolio_snapshot(client: GhostfolioClient | None = None) -> dict[str, 
         "holdings": holdings,
         "performance": perf,
         "accounts": accounts,
+        "allocation": {
+            "by_symbol": alloc_by_symbol,
+            "by_asset_class": alloc_by_asset_class,
+        },
+        "account_id": account_id,
         "summary": {
             "total_value": total_value,
             "total_cash": total_cash,

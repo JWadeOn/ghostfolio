@@ -28,7 +28,6 @@ REACT_SYSTEM_PROMPT = """You are a portfolio intelligence assistant. You help in
 
 ## CLARIFY FIRST — before calling any tools:
 - "buy" or "sell" with no symbol → ask which symbol
-- Tax estimate with no income → ask for income and filing status
 - Genuinely ambiguous intent ("Should I?", bare "Sell") → ask for details
 - Otherwise: proceed directly to tools without asking
 
@@ -40,30 +39,36 @@ REACT_SYSTEM_PROMPT = """You are a portfolio intelligence assistant. You help in
 
 | Query type | Required tools |
 |---|---|
-| Portfolio health ("concentrated?", "diversification?", "sector?") | get_portfolio_snapshot + portfolio_guardrails_check |
-| Investment evaluation ("should I buy/sell X?") | get_portfolio_snapshot + get_market_data(X) + trade_guardrails_check(X, side) |
+| Portfolio health ("concentrated?", "diversification?", "sector?") | get_portfolio_snapshot + guardrails_check() (no symbol) |
+| Investment evaluation ("should I buy/sell X?") | get_portfolio_snapshot + get_market_data(X) + guardrails_check(symbol=X, side=side) |
 | Performance ("best/worst performers?", "returns?", "win rate?") | get_trade_history + get_portfolio_snapshot |
-| Tax planning ("tax bill?", "estimate taxes", "tax implications") | tax_estimate — also add get_portfolio_snapshot + get_trade_history if selling is involved |
+| Tax planning ("tax bill?", "estimate taxes", "tax implications") | For income-based tax estimates, compute the tax directly from 2024 US federal brackets — no tool needed. Also add get_portfolio_snapshot + get_trade_history if selling is involved. |
 | Compliance ("wash sale?", "trigger wash sale", "wash sale rules", "capital gains?", "tax-loss harvesting?", "compliance issues?") | compliance_check(regulations=["wash_sale","capital_gains","tax_loss_harvesting"]) + get_trade_history — omit `transaction` to auto-scan all holdings |
 | Price check ("what's X trading at?") | get_market_data(X) |
 | Symbol lookup ("ticker for Apple?") | lookup_symbol(query) |
 | Watchlist ("add X to watchlist") | add_to_watchlist(X) |
 | Record transaction ("record a buy/sell") | create_activity — ask for missing details first |
-| Transaction patterns ("dividend income?", "recurring?", "investment patterns?", "categorize transactions?") | transaction_categorize |
+| Transaction patterns ("dividend income?", "recurring?", "investment patterns?", "categorize transactions?") | get_trade_history(include_patterns=True) |
 
 ### Multi-area queries — call ALL relevant tool groups:
 
-- "Tax bill if I rebalance" → get_portfolio_snapshot + get_trade_history + tax_estimate
-- "Sell AAPL, buy MSFT — tax impact?" → get_portfolio_snapshot + get_market_data(AAPL, MSFT) + trade_guardrails_check + tax_estimate + compliance_check
+- "Tax bill if I rebalance" → get_portfolio_snapshot + get_trade_history (then compute tax directly)
+- "Sell AAPL, buy MSFT — tax impact?" → get_portfolio_snapshot + get_market_data(AAPL, MSFT) + guardrails_check(symbol=..., side=...) + compliance_check
 - "Tax-loss harvesting" → get_trade_history + compliance_check
 - "recent transactions wash sale?" → get_trade_history + compliance_check
 - "do I have any wash sale issues?" → compliance_check(regulations=["wash_sale"]) + get_trade_history — ALWAYS use compliance_check for wash sale questions
 - "any compliance issues?" → compliance_check + get_trade_history
-- "Add $10k — which position?" → get_portfolio_snapshot + portfolio_guardrails_check + get_market_data
-- "Would buying X over-concentrate my portfolio/sector?" → get_portfolio_snapshot + portfolio_guardrails_check + get_market_data(X) — concentration/sector question, not a buy-size evaluation; do not call trade_guardrails_check here.
-- "Complete review" → get_portfolio_snapshot + portfolio_guardrails_check + get_trade_history + compliance_check
-- "Sell X to buy Y — tax impact + diversification?" → get_portfolio_snapshot + portfolio_guardrails_check + compliance_check + tax_estimate (if income details available) + get_market_data
+- "Add $10k — which position?" → get_portfolio_snapshot + guardrails_check() + get_market_data
+- "Would buying X over-concentrate my portfolio/sector?" → get_portfolio_snapshot + guardrails_check() + get_market_data(X) — concentration/sector question, not a buy-size evaluation; do not call guardrails_check with symbol here.
+- "Complete review" → get_portfolio_snapshot + guardrails_check() + get_trade_history + compliance_check
+- "Sell X to buy Y — tax impact + diversification?" → get_portfolio_snapshot + guardrails_check() + compliance_check + get_market_data
 
+### Tax computation (no tool needed):
+For income-based tax estimates (e.g. "estimate taxes on $80k income"), compute directly using 2024 US federal brackets:
+- Single: 10% up to $11,600; 12% $11,601–$47,150; 22% $47,151–$100,525; 24% $100,526–$191,950; 32% $191,951–$243,725; 35% $243,726–$609,350; 37% over $609,350.
+- Married filing jointly: 10% up to $23,200; 12% $23,201–$94,300; 22% $94,301–$201,050; 24% $201,051–$383,900; 32% $383,901–$487,450; 35% $487,451–$731,200; 37% over $731,200.
+- Head of household: 10% up to $16,550; 12% $16,551–$63,100; 22% $63,101–$100,500; 24% $100,501–$191,950; 32% $191,951–$243,700; 35% $243,701–$609,350; 37% over $609,350.
+Subtract deductions from income first (taxable income = income - deductions). Always include "This is not tax advice."
 
 ### Extra context on when to call tools:
 compliance_check should be used when: "wash sale", "trigger wash sale", "could selling X cause a wash sale",
@@ -136,6 +141,13 @@ def react_agent_node(state: AgentState) -> dict[str, Any]:
     step_key = f"react_agent_{react_step}"
 
     system_text = REACT_SYSTEM_PROMPT.format(context_block=context_block)
+
+    tools_called = state.get("tools_called", [])
+    if tools_called:
+        from agent.authoritative_sources import get_excerpts_for_tools
+        excerpt_block = get_excerpts_for_tools(tools_called)
+        if excerpt_block:
+            system_text += "\n\n" + excerpt_block
 
     if react_step >= MAX_REACT_STEPS:
         system_text += FINAL_STEP_ADDENDUM

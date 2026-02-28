@@ -10,14 +10,10 @@ from agent.tools.market_data import get_market_data as _get_market_data
 from agent.tools.portfolio import get_portfolio_snapshot as _get_portfolio_snapshot
 from agent.tools.regime import detect_regime as _detect_regime
 from agent.tools.scanner import scan_strategies as _scan_strategies
-from agent.tools.risk import portfolio_guardrails_check as _portfolio_guardrails_check
-from agent.tools.risk import trade_guardrails_check as _trade_guardrails_check
+from agent.tools.risk import guardrails_check as _guardrails_check
 from agent.tools.history import get_trade_history as _get_trade_history
 from agent.tools.symbols import lookup_symbol as _lookup_symbol
 from agent.tools.activities import create_activity as _create_activity
-from agent.tools.portfolio_analysis import portfolio_analysis as _portfolio_analysis
-from agent.tools.transaction_categorize import transaction_categorize as _transaction_categorize
-from agent.tools.tax_estimate import tax_estimate as _tax_estimate
 from agent.tools.compliance_check import compliance_check as _compliance_check
 from agent.tools.watchlist import add_to_watchlist as _add_to_watchlist
 
@@ -31,7 +27,7 @@ def get_market_data(
 ) -> dict:
     """Fetch price history and market context for one or more ticker symbols. Returns OHLCV data and key indicators.
     Use for: current prices, historical performance, price before a hypothetical trade.
-    NOT for: portfolio concentration, risk limits, or trade approval — use guardrails tools for those.
+    NOT for: portfolio concentration, risk limits, or trade approval — use guardrails_check for those.
     Args:
         symbols: List of ticker symbols, e.g. ["AAPL", "MSFT"].
         period: Time period — e.g. "1d", "5d", "1mo", "3mo", "6mo", "1y", "60d". Use "1d" with interval="1h" for current price.
@@ -42,12 +38,17 @@ def get_market_data(
 
 
 @tool
-def get_portfolio_snapshot() -> dict:
-    """Fetch the investor's current portfolio: holdings, performance, accounts, and summary (total value, cash, P&L).
+def get_portfolio_snapshot(account_id: Optional[str] = None) -> dict:
+    """Fetch the investor's current portfolio: holdings, performance, accounts, allocation, and summary (total value, cash, P&L).
 
-    Holdings include current market value and cost basis (investment). Market prices are refreshed from a live feed so values reflect current prices — use this for tax exposure / \"if I sell\" questions. Use when you need current holdings, cash balance, portfolio value, or allocation.
+    Holdings include current market value and cost basis (investment). Market prices are refreshed from a live feed so values reflect current prices — use this for tax exposure / "if I sell" questions. Use when you need current holdings, cash balance, portfolio value, or allocation.
+
+    Also returns allocation breakdown by symbol and asset class. Pass account_id to scope to a single account.
+
+    Args:
+        account_id: Optional Ghostfolio account ID to scope the snapshot to. Omit for full portfolio. Get available account IDs from the accounts list in a previous snapshot.
     """
-    return _get_portfolio_snapshot()
+    return _get_portfolio_snapshot(account_id=account_id)
 
 
 @tool
@@ -79,37 +80,29 @@ def scan_strategies(
 
 
 @tool
-def portfolio_guardrails_check() -> dict:
-    """Assess portfolio-level risk without reference to any specific trade.
-    Checks: position concentration, sector concentration, cash buffer, diversification score.
-    Use when: "concentrated?", "diversified?", "sector exposure?", "over-concentrated?",
-    "would buying X over-concentrate", "portfolio health", "are my positions within limits?".
-    No symbol or amount needed — evaluates the portfolio as it currently stands.
-    NOT for: evaluating a specific proposed buy or sell — use trade_guardrails_check for that.
-    """
-    return _portfolio_guardrails_check()
-
-
-@tool
-def trade_guardrails_check(
-    symbol: str,
+def guardrails_check(
+    symbol: Optional[str] = None,
     side: str = "buy",
     position_size_pct: Optional[float] = None,
     dollar_amount: Optional[float] = None,
 ) -> dict:
-    """Evaluate whether a specific proposed buy or sell fits portfolio risk guidelines.
-    Use when: user wants to buy or sell a named symbol and needs approval or sizing guidance.
-    NOT for: general concentration questions without a concrete trade — use portfolio_guardrails_check for those.
-    For buys: checks position size limit (max 5%), sector concentration (max 30%), cash availability.
-    For sells: evaluates P&L, hold period, portfolio impact after sale.
-    Returns: violations, warnings, and suggested position size.
+    """Check portfolio or trade risk guardrails. Two modes based on whether a symbol is provided:
+
+    No symbol → Portfolio health check: position concentration, sector concentration, cash buffer, diversification.
+    Use when: "concentrated?", "diversified?", "sector exposure?", "portfolio health", "over-concentrated?".
+
+    With symbol → Trade evaluation: checks if a proposed buy or sell fits risk guidelines.
+    Use when: "should I buy/sell X?", "can I buy $10k of X?", evaluating a specific trade.
+    For buys: position size limit (max 5%), sector concentration (max 30%), cash availability.
+    For sells: reasons to sell/hold, P&L, hold period, portfolio impact after sale.
+
     Args:
-        symbol: Ticker symbol to evaluate (e.g. "AAPL").
-        side: "buy" to evaluate adding a position, "sell" to evaluate reducing/exiting.
-        position_size_pct: Proposed position as % of portfolio (alternative to dollar_amount).
-        dollar_amount: Proposed dollar amount (alternative to position_size_pct).
+        symbol: Ticker symbol for trade evaluation (e.g. "AAPL"). Omit for portfolio-level health check.
+        side: "buy" to evaluate adding a position, "sell" to evaluate reducing/exiting. Only used with symbol.
+        position_size_pct: Proposed position as % of portfolio (alternative to dollar_amount). Only used with symbol.
+        dollar_amount: Proposed dollar amount (alternative to position_size_pct). Only used with symbol.
     """
-    return _trade_guardrails_check(
+    return _guardrails_check(
         symbol=symbol,
         side=side,
         position_size_pct=position_size_pct,
@@ -121,14 +114,18 @@ def trade_guardrails_check(
 def get_trade_history(
     time_range: str = "90d",
     symbol: Optional[str] = None,
+    include_patterns: bool = False,
 ) -> dict:
     """Fetch investment transaction history and compute performance metrics: returns, average gain/loss, hold periods, and open position P&L.
+
+    When include_patterns=True, also categorizes transactions and detects patterns (recurring dividends, DCA, fee clusters).
 
     Args:
         time_range: Lookback period — e.g. "90d", "6m", "1y".
         symbol: Optional filter to a specific symbol.
+        include_patterns: Set True to include transaction categories and pattern detection (dividends, DCA, fee clusters).
     """
-    return _get_trade_history(time_range=time_range, symbol=symbol)
+    return _get_trade_history(time_range=time_range, symbol=symbol, include_patterns=include_patterns)
 
 
 @tool
@@ -187,57 +184,6 @@ def create_activity(
 
 
 @tool
-def portfolio_analysis(account_id: Optional[str] = None) -> dict:
-    """Analyze portfolio holdings, allocation breakdown, and performance for a specific account or all accounts.
-
-    Use when the user asks for analysis of a specific account, allocation breakdown, or detailed per-account performance.
-    Omit account_id for the full portfolio. Get available account IDs from get_portfolio_snapshot → accounts[].id.
-
-    Args:
-        account_id: Ghostfolio account ID to scope the analysis to. Omit for full portfolio.
-    """
-    return _portfolio_analysis(account_id=account_id)
-
-
-@tool
-def transaction_categorize(
-    transactions: Optional[list] = None,
-    time_range: Optional[str] = "1y",
-    account_id: Optional[str] = None,
-) -> dict:
-    """Categorize transactions by type and tags; detect patterns (recurring dividends, DCA, fee clusters).
-
-    Pass transactions from trade history, or leave blank to fetch from Ghostfolio.
-
-    Args:
-        transactions: Pre-fetched list of transactions. If omitted, fetches from Ghostfolio.
-        time_range: Lookback period when fetching (e.g. "1y", "90d", "6m").
-        account_id: Optional account filter when fetching.
-    """
-    return _transaction_categorize(
-        transactions=transactions,
-        time_range=time_range,
-        account_id=account_id,
-    )
-
-
-@tool
-def tax_estimate(
-    income: float,
-    deductions: float = 0,
-    filing_status: str = "single",
-) -> dict:
-    """Estimate US federal income tax from income and deductions. Informational only; not professional tax advice.
-
-    Args:
-        income: Gross income in USD.
-        deductions: Total deductions (standard or itemized, default 0).
-        filing_status: One of "single", "married_filing_jointly", "head_of_household".
-    """
-    return _tax_estimate(income=income, deductions=deductions, filing_status=filing_status)
-
-
-@tool
 def compliance_check(
     regulations: Optional[list[str]] = None,
     transaction: Optional[dict] = None,
@@ -248,7 +194,7 @@ def compliance_check(
     1. Portfolio scan (default): omit transaction → scans ALL current holdings for wash sale risk, capital gains classification, and harvesting opportunities. Use this for general questions like "any wash sale issues?", "compliance issues?", "complete review".
     2. Single transaction: provide transaction dict → checks that specific trade.
 
-    Use when: "wash sale", "trigger wash sale", "wash sale rules", "do I have wash sale issues", "tax-loss harvesting", "short-term vs long-term", "holding period", "compliance issues", "complete review", "if I sold today". For portfolio-level risk limits use portfolio_guardrails_check or trade_guardrails_check.
+    Use when: "wash sale", "trigger wash sale", "wash sale rules", "do I have wash sale issues", "tax-loss harvesting", "short-term vs long-term", "holding period", "compliance issues", "complete review", "if I sold today". For portfolio-level risk limits use guardrails_check.
 
     Args:
         regulations: List of regulation IDs to check. Options: "wash_sale", "capital_gains", "tax_loss_harvesting". Defaults to all if omitted.
@@ -283,33 +229,26 @@ ALL_TOOLS = [
     get_portfolio_snapshot,
     detect_regime,
     scan_strategies,
-    portfolio_guardrails_check,
-    trade_guardrails_check,
+    guardrails_check,
     get_trade_history,
     lookup_symbol,
     create_activity,
     add_to_watchlist,
-    portfolio_analysis,
-    transaction_categorize,
-    tax_estimate,
     compliance_check,
 ]
 
 PHASE1_TOOLS = [
     get_market_data,
     get_portfolio_snapshot,
-    portfolio_guardrails_check,
-    trade_guardrails_check,
+    guardrails_check,
     get_trade_history,
     lookup_symbol,
     create_activity,
     add_to_watchlist,
-    transaction_categorize,
-    tax_estimate,
     compliance_check,
 ]
 
 
 def get_tools() -> list:
-    """Return the Phase 1 tool set (11 core tools). Fewer tools = faster, more reliable selection."""
+    """Return the Phase 1 tool set (8 core tools). Fewer tools = faster, more reliable selection."""
     return list(PHASE1_TOOLS)

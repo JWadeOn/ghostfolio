@@ -469,6 +469,46 @@ def trade_guardrails_check(
 
 
 # ---------------------------------------------------------------------------
+# Unified guardrails_check — single entry point for both modes
+# ---------------------------------------------------------------------------
+
+def guardrails_check(
+    symbol: str | None = None,
+    side: str = "buy",
+    position_size_pct: float | None = None,
+    dollar_amount: float | None = None,
+    client: GhostfolioClient | None = None,
+    portfolio_data: dict | None = None,
+    market_data: dict | None = None,
+) -> dict[str, Any]:
+    """Unified guardrails check — routes based on whether a symbol is provided.
+
+    No symbol → portfolio-level health check (concentration, cash, diversification).
+    With symbol → trade-level check (position sizing, sector, correlation, cash).
+
+    Args:
+        symbol: Ticker symbol for trade evaluation. Omit for portfolio health check.
+        side: "buy" or "sell" (only used when symbol is provided).
+        position_size_pct: Proposed position as % of portfolio.
+        dollar_amount: Proposed dollar amount.
+        client: GhostfolioClient instance.
+        portfolio_data: Pre-fetched portfolio data (avoids redundant API call).
+        market_data: Pre-fetched market data (avoids redundant API call).
+    """
+    if symbol is None or symbol == "":
+        return portfolio_guardrails_check(client=client, portfolio_data=portfolio_data)
+    return trade_guardrails_check(
+        symbol=symbol,
+        side=side,
+        position_size_pct=position_size_pct,
+        dollar_amount=dollar_amount,
+        client=client,
+        portfolio_data=portfolio_data,
+        market_data=market_data,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Legacy wrapper — will be removed once all callers migrate
 # ---------------------------------------------------------------------------
 

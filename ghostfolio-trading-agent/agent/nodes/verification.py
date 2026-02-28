@@ -250,7 +250,7 @@ def _compute_confidence(state: AgentState) -> int:
         if matches > 0:
             score += min(10, matches * 3)
 
-    for guardrail_key in ("portfolio_guardrails_check", "trade_guardrails_check"):
+    for guardrail_key in ("guardrails_check", "portfolio_guardrails_check", "trade_guardrails_check"):
         guardrail_result = tool_results.get(guardrail_key)
         if guardrail_result and isinstance(guardrail_result, dict):
             if guardrail_result.get("passed"):
@@ -284,7 +284,9 @@ def _check_guardrails(synthesis: str, intent: str, tool_results: dict) -> list[s
     trade_keywords = ["buy", "enter", "long", "short"]
     has_trade_suggestion = any(kw in synth_lower for kw in trade_keywords)
 
-    trade_result = tool_results.get("trade_guardrails_check", {})
+    trade_result = tool_results.get("guardrails_check", {})
+    if not trade_result:
+        trade_result = tool_results.get("trade_guardrails_check", {})
     if not trade_result:
         trade_result = tool_results.get("check_risk", {})
     if not isinstance(trade_result, dict):
@@ -377,6 +379,68 @@ def _check_compliance_consistency(synthesis: str, tool_results: dict) -> list[st
     return issues
 
 
+def _check_authoritative_consistency(synthesis: str, tool_results: dict) -> list[str]:
+    """Check synthesis against authoritative tax/compliance rules."""
+    issues = []
+    synth_lower = synthesis.lower()
+
+    # Wash sale window: if synthesis mentions wash sale but implies a window != 30 days
+    if "compliance_check" in tool_results and "wash sale" in synth_lower:
+        wrong_windows = re.findall(r'(\d+)\s*(?:-?\s*)?days?\b.*?(?:wash|before|after)', synth_lower)
+        wrong_windows += re.findall(r'(?:wash|before|after).*?(\d+)\s*(?:-?\s*)?days?\b', synth_lower)
+        for window in wrong_windows:
+            try:
+                days = int(window)
+                if days not in (30, 60, 61):
+                    # 30 is correct window each side; 60/61 is the total window — both acceptable
+                    issues.append(
+                        f"Synthesis mentions wash sale with {days}-day window; "
+                        "authoritative rule is 30 days before or after (IRC \u00a71091)"
+                    )
+            except ValueError:
+                continue
+
+    # Long-term capital gains: must be held more than 1 year
+    has_tax_or_compliance = "tax_estimate" in tool_results or "compliance_check" in tool_results
+    if has_tax_or_compliance and "long-term" in synth_lower:
+        wrong_periods = re.findall(
+            r'(?:long.?term).*?(?:held|hold|holding)\s+.*?(\d+)\s*(?:month|day|year)',
+            synth_lower,
+        )
+        wrong_periods += re.findall(
+            r'(?:held|hold|holding)\s+.*?(\d+)\s*(?:month|day|year).*?(?:long.?term)',
+            synth_lower,
+        )
+        for period_match in wrong_periods:
+            try:
+                val = int(period_match)
+                # Check context for unit
+                period_ctx_match = re.search(
+                    rf'{val}\s*(month|day|year)', synth_lower
+                )
+                if period_ctx_match:
+                    unit = period_ctx_match.group(1)
+                    if unit.startswith("year") and val < 1:
+                        issues.append(
+                            f"Synthesis implies long-term holding period of {val} year(s); "
+                            "must be more than 1 year (IRC \u00a71222)"
+                        )
+                    elif unit.startswith("month") and val < 12:
+                        issues.append(
+                            f"Synthesis implies long-term holding period of {val} months; "
+                            "must be more than 12 months (IRC \u00a71222)"
+                        )
+                    elif unit.startswith("day") and val < 365:
+                        issues.append(
+                            f"Synthesis implies long-term holding period of {val} days; "
+                            "must be more than 365 days (IRC \u00a71222)"
+                        )
+            except ValueError:
+                continue
+
+    return issues
+
+
 def verify_node(state: AgentState) -> dict[str, Any]:
     """Verify the synthesis: fact-check, confidence, guardrails, domain checks."""
     synthesis = state.get("synthesis", "")
@@ -417,6 +481,9 @@ def verify_node(state: AgentState) -> dict[str, Any]:
 
     compliance_issues = _check_compliance_consistency(synthesis, tool_results)
     all_issues.extend(compliance_issues)
+
+    authoritative_issues = _check_authoritative_consistency(synthesis, tool_results)
+    all_issues.extend(authoritative_issues)
 
     passed = len(all_issues) == 0
 

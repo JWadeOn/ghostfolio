@@ -91,6 +91,7 @@ def get_trade_history(
     time_range: str = "90d",
     symbol: str | None = None,
     strategy_tag: str | None = None,
+    include_patterns: bool = False,
     client: GhostfolioClient | None = None,
 ) -> dict[str, Any]:
     """
@@ -100,10 +101,13 @@ def get_trade_history(
         time_range: Time range string (e.g., "90d", "6m", "1y")
         symbol: Optional filter by symbol
         strategy_tag: Optional filter by strategy tag
+        include_patterns: When True, also categorize transactions and detect patterns
+            (recurring dividends, DCA, fee clusters). Merges transaction_categorize output.
         client: Optional GhostfolioClient
 
     Returns:
         Dict with enriched trades list and aggregate statistics.
+        When include_patterns=True, also includes 'categories' and 'patterns' keys.
     """
     if client is None:
         client = GhostfolioClient()
@@ -226,9 +230,17 @@ def get_trade_history(
         ) if enriched_trades else 0,
     }
 
-    return {
+    result = {
         "trades": enriched_trades,
         "open_positions": open_positions,
         "aggregates": aggregates,
         "time_range": time_range,
     }
+
+    if include_patterns:
+        from agent.tools.transaction_categorize import _normalize_activity, _categorize, _detect_patterns
+        normalized = [_normalize_activity(o) for o in raw_orders]
+        result["categories"] = [_categorize(t) for t in normalized]
+        result["patterns"] = _detect_patterns(normalized)
+
+    return result

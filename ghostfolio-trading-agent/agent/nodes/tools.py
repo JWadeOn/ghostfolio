@@ -20,13 +20,10 @@ from agent.tools.market_data import get_market_data
 from agent.tools.portfolio import get_portfolio_snapshot
 from agent.tools.regime import detect_regime
 from agent.tools.scanner import scan_strategies
-from agent.tools.risk import portfolio_guardrails_check, trade_guardrails_check, check_risk
+from agent.tools.risk import guardrails_check, portfolio_guardrails_check, trade_guardrails_check, check_risk
 from agent.tools.history import get_trade_history
 from agent.tools.symbols import lookup_symbol
 from agent.tools.activities import create_activity
-from agent.tools.portfolio_analysis import portfolio_analysis
-from agent.tools.transaction_categorize import transaction_categorize
-from agent.tools.tax_estimate import tax_estimate
 from agent.tools.compliance_check import compliance_check
 from agent.tools.watchlist import add_to_watchlist
 
@@ -37,31 +34,30 @@ TOOL_REGISTRY = {
     "get_portfolio_snapshot": get_portfolio_snapshot,
     "detect_regime": detect_regime,
     "scan_strategies": scan_strategies,
-    "portfolio_guardrails_check": portfolio_guardrails_check,
-    "trade_guardrails_check": trade_guardrails_check,
+    "guardrails_check": guardrails_check,
     "get_trade_history": get_trade_history,
     "lookup_symbol": lookup_symbol,
     "create_activity": create_activity,
-    "check_risk": check_risk,  # legacy — remove when all callers migrate
-    "portfolio_analysis": portfolio_analysis,
-    "transaction_categorize": transaction_categorize,
-    "tax_estimate": tax_estimate,
     "compliance_check": compliance_check,
     "add_to_watchlist": add_to_watchlist,
+    # Legacy names — kept for backward compatibility
+    "portfolio_guardrails_check": portfolio_guardrails_check,
+    "trade_guardrails_check": trade_guardrails_check,
+    "check_risk": check_risk,
 }
 
 GHOSTFOLIO_TOOLS = frozenset({
     "get_portfolio_snapshot",
     "get_trade_history",
-    "portfolio_guardrails_check",
-    "trade_guardrails_check",
-    "check_risk",
+    "guardrails_check",
     "lookup_symbol",
     "create_activity",
     "add_to_watchlist",
-    "portfolio_analysis",
-    "transaction_categorize",
     "compliance_check",
+    # Legacy names
+    "portfolio_guardrails_check",
+    "trade_guardrails_check",
+    "check_risk",
 })
 
 
@@ -132,10 +128,9 @@ def execute_tools_node(state: AgentState) -> dict[str, Any]:
                 logger.warning("Failed to create Ghostfolio client for %s: %s", tool_name, e)
 
         # Inject previously-fetched data to avoid redundant API calls
-        if tool_name in ("portfolio_guardrails_check", "trade_guardrails_check"):
+        if tool_name in ("guardrails_check", "portfolio_guardrails_check", "trade_guardrails_check"):
             if "get_portfolio_snapshot" in tool_results:
                 tool_args["portfolio_data"] = tool_results["get_portfolio_snapshot"]
-        if tool_name == "trade_guardrails_check":
             if "get_market_data" in tool_results:
                 tool_args["market_data"] = tool_results["get_market_data"]
 

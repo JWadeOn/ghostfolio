@@ -59,3 +59,56 @@ def test_fetches_from_client_when_no_transactions():
 def test_returns_error_when_no_client_and_no_transactions():
     result = transaction_categorize()
     assert "error" in result
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Test include_patterns via get_trade_history
+# ══════════════════════════════════════════════════════════════════════
+
+def test_get_trade_history_include_patterns():
+    """get_trade_history(include_patterns=True) should add categories and patterns."""
+    from agent.tools.history import get_trade_history
+
+    client = MagicMock()
+    client.get_orders.return_value = {
+        "activities": [
+            {"id": "1", "type": "BUY", "symbol": "VTI", "date": "2025-06-15T00:00:00Z",
+             "quantity": 10, "unitPrice": 250, "fee": 0, "currency": "USD", "tags": []},
+            {"id": "2", "type": "BUY", "symbol": "VTI", "date": "2025-07-15T00:00:00Z",
+             "quantity": 10, "unitPrice": 252, "fee": 0, "currency": "USD", "tags": []},
+            {"id": "3", "type": "BUY", "symbol": "VTI", "date": "2025-08-15T00:00:00Z",
+             "quantity": 10, "unitPrice": 248, "fee": 0, "currency": "USD", "tags": []},
+            {"id": "4", "type": "BUY", "symbol": "VTI", "date": "2025-09-15T00:00:00Z",
+             "quantity": 10, "unitPrice": 255, "fee": 0, "currency": "USD", "tags": []},
+            {"id": "5", "type": "BUY", "symbol": "VTI", "date": "2025-10-15T00:00:00Z",
+             "quantity": 10, "unitPrice": 260, "fee": 0, "currency": "USD", "tags": []},
+        ]
+    }
+
+    result = get_trade_history(time_range="1y", include_patterns=True, client=client)
+
+    assert "error" not in result
+    assert "categories" in result
+    assert "patterns" in result
+    assert len(result["categories"]) == 5
+    # DCA pattern should be detected
+    pattern_names = [p["name"] for p in result["patterns"]]
+    assert "dca" in pattern_names
+
+
+def test_get_trade_history_no_patterns_by_default():
+    """get_trade_history(include_patterns=False) should NOT have categories/patterns keys."""
+    from agent.tools.history import get_trade_history
+
+    client = MagicMock()
+    client.get_orders.return_value = {
+        "activities": [
+            {"id": "1", "type": "BUY", "symbol": "AAPL", "date": "2025-01-10T00:00:00Z",
+             "quantity": 5, "unitPrice": 200, "fee": 0, "currency": "USD", "tags": []},
+        ]
+    }
+
+    result = get_trade_history(time_range="1y", client=client)
+
+    assert "categories" not in result
+    assert "patterns" not in result

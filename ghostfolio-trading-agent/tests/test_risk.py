@@ -1,8 +1,8 @@
-"""Unit tests for portfolio_guardrails_check and trade_guardrails_check."""
+"""Unit tests for portfolio_guardrails_check, trade_guardrails_check, and guardrails_check."""
 
 import pytest
 from unittest.mock import patch, MagicMock
-from agent.tools.risk import portfolio_guardrails_check, trade_guardrails_check, check_risk
+from agent.tools.risk import portfolio_guardrails_check, trade_guardrails_check, check_risk, guardrails_check
 
 
 class TestPortfolioGuardrailsCheck:
@@ -238,3 +238,78 @@ class TestCheckRiskLegacy:
 
         result = check_risk("GOOG", action="sell")
         assert result.get("sell_evaluation") is True
+
+
+class TestGuardrailsCheck:
+    """Tests for the unified guardrails_check() function."""
+
+    @patch("agent.tools.risk.get_portfolio_snapshot")
+    @patch("agent.tools.risk._get_sector")
+    def test_no_symbol_routes_to_portfolio(self, mock_sector, mock_portfolio):
+        mock_portfolio.return_value = {
+            "holdings": [
+                {"symbol": "AAPL", "weight": 0.03, "sectors": []},
+                {"symbol": "GOOG", "weight": 0.02, "sectors": []},
+            ],
+            "summary": {"total_value": 100000, "total_cash": 15000, "holding_count": 2},
+        }
+        mock_sector.return_value = "Technology"
+
+        result = guardrails_check()
+        assert result.get("portfolio_level") is True
+        assert result["passed"] is True
+
+    @patch("agent.tools.risk.get_portfolio_snapshot")
+    @patch("agent.tools.risk._get_sector")
+    def test_empty_symbol_routes_to_portfolio(self, mock_sector, mock_portfolio):
+        mock_portfolio.return_value = {
+            "holdings": [],
+            "summary": {"total_value": 10000, "total_cash": 10000, "holding_count": 0},
+        }
+        mock_sector.return_value = None
+
+        result = guardrails_check(symbol="")
+        assert result.get("portfolio_level") is True
+
+    @patch("agent.tools.risk.get_portfolio_snapshot")
+    @patch("agent.tools.risk.get_market_data")
+    @patch("agent.tools.risk._get_sector")
+    def test_with_symbol_routes_to_trade(self, mock_sector, mock_market, mock_portfolio):
+        mock_portfolio.return_value = {
+            "holdings": [],
+            "summary": {"total_value": 100000, "total_cash": 50000, "holding_count": 0},
+        }
+        mock_sector.return_value = "Technology"
+        mock_market.return_value = {"AAPL": [{"date": "2024-01-01", "close": 200}]}
+
+        result = guardrails_check(symbol="AAPL", side="buy", position_size_pct=3.0)
+        assert result.get("action") == "buy"
+        assert result.get("symbol") == "AAPL"
+
+    @patch("agent.tools.risk.get_portfolio_snapshot")
+    @patch("agent.tools.risk._get_sector")
+    def test_sell_via_unified(self, mock_sector, mock_portfolio):
+        mock_portfolio.return_value = {
+            "holdings": [{"symbol": "GOOG", "weight": 50.0, "value": 10000, "investment": 8000, "quantity": 10}],
+            "summary": {"total_value": 20000, "total_cash": 0, "holding_count": 1},
+        }
+        mock_sector.return_value = "Communication Services"
+
+        result = guardrails_check(symbol="GOOG", side="sell")
+        assert result.get("sell_evaluation") is True
+        assert result.get("action") == "sell"
+
+    @patch("agent.tools.risk.get_portfolio_snapshot")
+    @patch("agent.tools.risk._get_sector")
+    def test_accepts_portfolio_data_kwarg(self, mock_sector, mock_portfolio):
+        """Ensure pre-fetched portfolio_data is accepted and used."""
+        portfolio_data = {
+            "holdings": [{"symbol": "AAPL", "weight": 0.03, "sectors": []}],
+            "summary": {"total_value": 100000, "total_cash": 15000, "holding_count": 1},
+        }
+        mock_sector.return_value = "Technology"
+
+        result = guardrails_check(portfolio_data=portfolio_data)
+        assert result.get("portfolio_level") is True
+        # get_portfolio_snapshot should NOT be called since we pass portfolio_data
+        mock_portfolio.assert_not_called()

@@ -73,13 +73,13 @@ Be constructive — suggest specific improvements based on the data. Use only nu
 
     "risk_check": """You are evaluating whether a proposed trade fits the portfolio's risk parameters, OR whether to SELL an existing position.
 
-**When the tool result is a BUY evaluation** (trade_guardrails_check has NO "sell_evaluation" key and "action": "buy"):
+**When the tool result is a BUY evaluation** (guardrails_check has NO "sell_evaluation" key and "action": "buy"):
 - The user asked whether to BUY or ADD to a position. Answer that question only: state pass/fail for adding, and suggested size if they can add.
 - Do NOT recommend selling. If they cannot add (e.g. no cash, or would exceed position limit), say so and suggest a smaller amount or "you would need to free cash first" — but do not give a sell recommendation.
 - If violations exist (position size, cash, sector), explain why adding fails and suggest adjustments (e.g. smaller size). Include current portfolio context (total value, cash).
 - If a stop_loss_level is provided, include it in your response.
 
-**When the tool result is a SELL evaluation** (trade_guardrails_check has "sell_evaluation": true or "action": "sell"):
+**When the tool result is a SELL evaluation** (guardrails_check has "sell_evaluation": true or "action": "sell"):
 - Do NOT report "Risk Assessment: FAIL" for concentration or lack of cash — those are reasons TO sell (diversification), not reasons to block.
 - Use "reasons_to_sell" as factors supporting a sell or partial sell; use "reasons_to_hold" if any.
 - Include: current position value, cost basis, unrealized P&L % (if available), hold_period (days held) if available, and what the portfolio would look like after the sale (cash after sell, portfolio value).
@@ -109,7 +109,7 @@ Use the create_activity tool result. Your response MUST:
 Keep it short and factual. Use only numbers from the tool results.""",
 
     "portfolio_health": """You are analyzing the trader's portfolio health and diversification.
-Use the get_portfolio_snapshot and portfolio_guardrails_check tool results. Include:
+Use the get_portfolio_snapshot and guardrails_check tool results. Include:
 - Concentration analysis: identify any single-stock positions that are overweight
 - Sector allocation and diversification assessment
 - Cash buffer status
@@ -126,8 +126,8 @@ Use words like "performance", "gain", "loss" in your response.
 Use only numbers from the tool results.""",
 
     "tax_implications": """You are providing tax analysis for the trader.
-Use the tax_estimate tool results (and compliance_check/get_trade_history if available). Include:
-- Estimated tax liability
+Use get_portfolio_snapshot and/or get_trade_history tool results (and compliance_check if available). Include:
+- Estimated tax liability (computed from gains and 2024 US federal tax brackets)
 - Effective tax rate
 - Breakdown of how the estimate was calculated
 - Capital gains context if applicable (short-term vs long-term)
@@ -227,6 +227,13 @@ def synthesize_node(state: AgentState) -> dict[str, Any]:
         for issue in issues:
             system += f"- {issue}\n"
         system += "\nPlease regenerate your response using only the data provided. Fix the issues listed above."
+
+    tool_names_for_sources = [k for k in (tool_results or {}) if k in ("tax_estimate", "compliance_check")]
+    if tool_names_for_sources:
+        from agent.authoritative_sources import get_excerpts_for_tools
+        excerpt_block = get_excerpts_for_tools(tool_names_for_sources)
+        if excerpt_block:
+            system += "\n\n" + excerpt_block
 
     # Strip ReAct-internal messages (tool calls / tool results) so the
     # synthesis LLM never sees raw tool invocation traces.

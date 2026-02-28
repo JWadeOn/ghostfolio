@@ -8,17 +8,19 @@ from typing import Any
 
 from agent.config import get_settings
 from agent.state import AgentState
+from agent.authoritative_sources import get_sources_for_tools
 from agent.observability import aggregate_token_usage, make_trace_entry
 
 logger = logging.getLogger(__name__)
 
 TOOL_TO_INTENT: list[tuple[frozenset[str], str]] = [
-    (frozenset({"trade_guardrails_check", "get_market_data", "get_portfolio_snapshot"}), "risk_check"),
-    (frozenset({"trade_guardrails_check", "get_market_data"}), "risk_check"),
-    (frozenset({"trade_guardrails_check"}), "risk_check"),
-    (frozenset({"get_portfolio_snapshot", "portfolio_guardrails_check"}), "portfolio_health"),
+    # New unified guardrails_check
+    (frozenset({"guardrails_check", "get_market_data", "get_portfolio_snapshot"}), "risk_check"),
+    (frozenset({"guardrails_check", "get_market_data"}), "risk_check"),
+    (frozenset({"guardrails_check"}), "risk_check"),
+    (frozenset({"get_portfolio_snapshot", "guardrails_check"}), "portfolio_health"),
+    # Standard mappings
     (frozenset({"get_trade_history", "get_portfolio_snapshot"}), "performance_review"),
-    (frozenset({"tax_estimate"}), "tax_implications"),
     (frozenset({"compliance_check"}), "compliance"),
     (frozenset({"get_market_data"}), "price_quote"),
     (frozenset({"get_portfolio_snapshot"}), "portfolio_overview"),
@@ -29,6 +31,12 @@ TOOL_TO_INTENT: list[tuple[frozenset[str], str]] = [
     (frozenset({"log_trade_journal"}), "journal_analysis"),
     (frozenset({"get_journal_analysis"}), "journal_analysis"),
     (frozenset({"validate_chart"}), "chart_validation"),
+    # Legacy tool names for backward compatibility
+    (frozenset({"trade_guardrails_check", "get_market_data", "get_portfolio_snapshot"}), "risk_check"),
+    (frozenset({"trade_guardrails_check", "get_market_data"}), "risk_check"),
+    (frozenset({"trade_guardrails_check"}), "risk_check"),
+    (frozenset({"get_portfolio_snapshot", "portfolio_guardrails_check"}), "portfolio_health"),
+    (frozenset({"tax_estimate"}), "tax_implications"),
 ]
 
 
@@ -100,6 +108,8 @@ def _guess_source_tool(claim: str, tool_results: dict) -> str | None:
         "detect_regime": ["regime", "trend", "volatility", "breadth", "correlation", "rotation", "vix"],
         "get_portfolio_snapshot": ["portfolio", "holding", "cash", "invested", "account", "position"],
         "scan_strategies": ["score", "signal", "breakout", "reversion", "momentum", "entry", "stop", "target"],
+        "guardrails_check": ["risk", "violation", "sector", "concentration", "position size", "cash buffer", "stop loss"],
+        # Legacy names
         "portfolio_guardrails_check": ["risk", "violation", "sector", "concentration", "position size", "cash buffer"],
         "trade_guardrails_check": ["risk", "violation", "sector", "concentration", "position size", "stop loss"],
         "get_trade_history": ["win rate", "profit factor", "p&l", "trade", "loss"],
@@ -127,7 +137,8 @@ def _build_intent_data(intent: str, tool_results: dict) -> dict:
         }
     elif intent == "risk_check":
         return (
-            tool_results.get("trade_guardrails_check")
+            tool_results.get("guardrails_check")
+            or tool_results.get("trade_guardrails_check")
             or tool_results.get("portfolio_guardrails_check")
             or tool_results.get("check_risk", {})
         )
@@ -150,7 +161,10 @@ def _build_intent_data(intent: str, tool_results: dict) -> dict:
     elif intent == "portfolio_health":
         return {
             "snapshot": tool_results.get("get_portfolio_snapshot", {}),
-            "guardrails": tool_results.get("portfolio_guardrails_check", {}),
+            "guardrails": (
+                tool_results.get("guardrails_check")
+                or tool_results.get("portfolio_guardrails_check", {})
+            ),
         }
     elif intent == "performance_review":
         history = tool_results.get("get_trade_history", {})
@@ -215,6 +229,8 @@ def format_output_node(state: AgentState) -> dict[str, Any]:
         "trace_log": trace_log,
     }
 
+    auth_sources = get_sources_for_tools(tools_called)
+
     response = {
         "summary": synthesis,
         "confidence": confidence,
@@ -223,6 +239,7 @@ def format_output_node(state: AgentState) -> dict[str, Any]:
         "citations": citations,
         "warnings": warnings if warnings else [],
         "tools_used": tools_called,
+        "authoritative_sources": [{"label": s["label"], "url": s["url"]} for s in auth_sources],
         "disclaimer": DISCLAIMER,
         "observability": observability,
     }
