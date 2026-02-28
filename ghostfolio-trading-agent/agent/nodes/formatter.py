@@ -1,4 +1,4 @@
-"""Node 6: Format output — structure the final JSON response. Code only, no LLM."""
+"""Node: Format output — structure the final JSON response. Code only, no LLM."""
 
 from __future__ import annotations
 
@@ -6,14 +6,52 @@ import re
 import logging
 from typing import Any
 
+from agent.config import get_settings
 from agent.state import AgentState
 from agent.observability import aggregate_token_usage, make_trace_entry
 
 logger = logging.getLogger(__name__)
 
+TOOL_TO_INTENT: list[tuple[frozenset[str], str]] = [
+    (frozenset({"trade_guardrails_check", "get_market_data", "get_portfolio_snapshot"}), "risk_check"),
+    (frozenset({"trade_guardrails_check", "get_market_data"}), "risk_check"),
+    (frozenset({"trade_guardrails_check"}), "risk_check"),
+    (frozenset({"get_portfolio_snapshot", "portfolio_guardrails_check"}), "portfolio_health"),
+    (frozenset({"get_trade_history", "get_portfolio_snapshot"}), "performance_review"),
+    (frozenset({"tax_estimate"}), "tax_implications"),
+    (frozenset({"compliance_check"}), "compliance"),
+    (frozenset({"get_market_data"}), "price_quote"),
+    (frozenset({"get_portfolio_snapshot"}), "portfolio_overview"),
+    (frozenset({"get_trade_history"}), "performance_review"),
+    (frozenset({"lookup_symbol"}), "lookup_symbol"),
+    (frozenset({"create_activity"}), "create_activity"),
+    (frozenset({"add_to_watchlist"}), "add_to_watchlist"),
+    (frozenset({"log_trade_journal"}), "journal_analysis"),
+    (frozenset({"get_journal_analysis"}), "journal_analysis"),
+    (frozenset({"validate_chart"}), "chart_validation"),
+]
+
+
+def infer_intent_from_tools(tools_called: list[str]) -> str:
+    """Infer intent from which tools the agent called. Zero-cost code-only mapping."""
+    if not tools_called:
+        return "general"
+    called = set(tools_called)
+    for tool_set, intent in TOOL_TO_INTENT:
+        if tool_set == called:
+            return intent
+    if len(called) >= 4:
+        return "multi_step"
+    for tool_set, intent in TOOL_TO_INTENT:
+        if tool_set <= called and len(called) - len(tool_set) <= 1:
+            return intent
+    if len(called) >= 3:
+        return "multi_step"
+    return "general"
+
 DISCLAIMER = (
-    "This is market analysis, not financial advice. Past performance does not guarantee "
-    "future results. Always do your own research and consider your risk tolerance before trading."
+    "This is portfolio analysis, not financial advice. Past performance does not guarantee "
+    "future results. Always do your own research and consider your risk tolerance before investing."
 )
 
 
@@ -135,14 +173,15 @@ def _build_intent_data(intent: str, tool_results: dict) -> dict:
 def format_output_node(state: AgentState) -> dict[str, Any]:
     """Build the structured JSON response."""
     synthesis = state.get("synthesis", "")
-    intent = state.get("intent", "general")
-    verification = state.get("verification_result", {})
     tool_results = state.get("tool_results", {})
     tools_called = state.get("tools_called", [])
+    verification = state.get("verification_result") or {}
     token_usage = state.get("token_usage") or {}
     node_latencies = state.get("node_latencies") or {}
     error_log = state.get("error_log") or []
     trace_log = list(state.get("trace_log") or [])
+
+    intent = infer_intent_from_tools(tools_called)
 
     confidence = verification.get("confidence", 50)
     issues = verification.get("issues", [])
@@ -161,7 +200,8 @@ def format_output_node(state: AgentState) -> dict[str, Any]:
     citations = _extract_citations(synthesis, tool_results)
     data = _build_intent_data(intent, tool_results)
 
-    token_totals = aggregate_token_usage(token_usage)
+    settings = get_settings()
+    token_totals = aggregate_token_usage(token_usage, model=settings.agent_model)
 
     trace_log.append(make_trace_entry(
         "format_output",

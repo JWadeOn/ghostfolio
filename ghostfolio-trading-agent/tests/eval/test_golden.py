@@ -45,7 +45,8 @@ def test_golden_case(case, agent_graph):
         for dim in ("tool_selection", "source_citation", "content", "negative"):
             dim_result = checks[dim]
             if not dim_result["passed"]:
-                for err in dim_result["errors"]:
+                err = dim_result.get("error", "")
+                if err:
                     failures.append(f"[{dim}] {err}")
         pytest.fail(
             f"Golden case '{case.get('id')}' failed:\n" + "\n".join(failures)

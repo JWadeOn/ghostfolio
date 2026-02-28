@@ -24,7 +24,14 @@ if str(_AGENT_ROOT) not in sys.path:
 
 from langchain_core.messages import HumanMessage
 
+from agent.config import get_settings as _get_settings
 from tests.eval.dataset import eval_cases
+
+_s = _get_settings()
+if _s.langchain_api_key and _s.langchain_tracing_v2:
+    os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+    os.environ.setdefault("LANGCHAIN_API_KEY", _s.langchain_api_key)
+    os.environ.setdefault("LANGCHAIN_PROJECT", _s.langchain_project)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -116,7 +123,6 @@ def _build_initial_state(use_mocks: bool = True) -> dict:
         "tools_called": [],
         "react_step": 0,
         "synthesis": None,
-        "skip_synthesis": False,
         "verification_result": None,
         "verification_attempts": 0,
         "response": None,
@@ -332,8 +338,15 @@ def run_single_eval(
     agent_confidence = response.get("confidence", 0)
     confidence_normalized = (agent_confidence / 100.0) if isinstance(agent_confidence, (int, float)) else 0.0
 
-    # Compute dimension scores
-    intent_score = _score_intent(expected_intent, result.get("intent"))
+    raw_node_latencies = (
+        result.get("node_latencies")
+        or (response.get("observability") or {}).get("node_latencies")
+        or {}
+    )
+
+    inferred_intent = response.get("intent", "general")
+
+    intent_score = _score_intent(expected_intent, inferred_intent)
     tools_score, tools_errors = _score_tools(expected_tools, tools_called, exact_tools)
     tool_exec_score, tool_exec_errors = _score_tool_execution(tool_results)
     # When live run and case is not live_safe, skip content assertions and only check tools
@@ -401,7 +414,7 @@ def run_single_eval(
         "agent_confidence": agent_confidence,
         "errors": errors,
         "tools_called": tools_called,
-        "intent": result.get("intent"),
+        "intent": inferred_intent,
         "response": response,
     }
 
@@ -517,11 +530,23 @@ def aggregate_results(results: list[dict]) -> dict:
         for key in ("intent", "tools", "content", "safety", "confidence", "verification"):
             v = sc.get(key, 0)
             by_category[cat][f"avg_{key}"] = (by_category[cat][f"avg_{key}"] * (n - 1) + v) / n
+    cases_with_tools = [r for r in results if r.get("tools_called")]
+    tool_success_count = sum(1 for r in cases_with_tools if not r.get("tool_errors"))
+    tool_success_rate = round(100 * tool_success_count / len(cases_with_tools), 1) if cases_with_tools else 100.0
+
+    cases_with_verification = [r for r in results if r.get("verification_passed") is not None]
+    verification_failed = sum(1 for r in cases_with_verification if r.get("verification_passed") is False)
+    hallucination_rate = round(100 * verification_failed / len(cases_with_verification), 1) if cases_with_verification else 0.0
+    verification_accuracy = round(100 - hallucination_rate, 1)
+
     return {
         "total": total,
         "passed": passed,
         "pass_rate_pct": round(100 * passed / total, 1) if total else 0,
         "avg_overall_score": round(sum(r.get("overall_score", 0) for r in results) / total, 4) if total else 0,
+        "tool_success_rate_pct": tool_success_rate,
+        "hallucination_rate_pct": hallucination_rate,
+        "verification_accuracy_pct": verification_accuracy,
         "by_category": by_category,
     }
 

@@ -10,7 +10,7 @@ class AgentState(TypedDict):
     # Conversation (HumanMessage, AIMessage with tool_calls, ToolMessage)
     messages: Annotated[list, add_messages]
 
-    # Intent classification result (used for formatting and analytics, not tool routing)
+    # Intent — inferred from tools_called by format_output (not set by an LLM node)
     intent: str
     extracted_params: dict
 
@@ -30,9 +30,8 @@ class AgentState(TypedDict):
     # ReAct loop control
     react_step: int
 
-    # Synthesis and verification
+    # Synthesis (set by react_agent when it produces a final text answer)
     synthesis: str | None
-    skip_synthesis: bool
     verification_result: dict | None
     verification_attempts: int
 

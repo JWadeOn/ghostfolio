@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     # LLM
     anthropic_api_key: str = ""
+    agent_model: str = "claude-haiku-4-5"
 
     # Observability
     langchain_tracing_v2: bool = True

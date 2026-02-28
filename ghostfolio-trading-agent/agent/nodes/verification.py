@@ -1,15 +1,17 @@
-"""Node 5: Verification — fact-check, confidence score, guardrails. Code only, no LLM."""
+"""Verification node — fact-check, confidence score, guardrails. Code only, no LLM."""
 
 from __future__ import annotations
 
 import json
 import re
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
 from agent.state import AgentState
-from agent.observability import track_latency, make_trace_entry
+from agent.nodes.formatter import infer_intent_from_tools
+from agent.observability import make_trace_entry
 from langchain_core.messages import HumanMessage
 
 logger = logging.getLogger(__name__)
@@ -379,43 +381,44 @@ def verify_node(state: AgentState) -> dict[str, Any]:
     """Verify the synthesis: fact-check, confidence, guardrails, domain checks."""
     synthesis = state.get("synthesis", "")
     tool_results = state.get("tool_results", {})
-    intent = state.get("intent", "general")
+    tools_called = state.get("tools_called", [])
+    intent = infer_intent_from_tools(tools_called)
     attempts = state.get("verification_attempts", 0)
     node_latencies = dict(state.get("node_latencies") or {})
     trace_log = list(state.get("trace_log") or [])
 
-    with track_latency() as timing:
-        all_issues = []
+    _start = time.perf_counter()
+    all_issues = []
 
-        last_user_message = ""
-        for msg in reversed(state.get("messages") or []):
-            if isinstance(msg, HumanMessage):
-                last_user_message = getattr(msg, "content", "") or str(msg)
-                break
-        extracted_params = state.get("extracted_params") or {}
+    last_user_message = ""
+    for msg in reversed(state.get("messages") or []):
+        if isinstance(msg, HumanMessage):
+            last_user_message = getattr(msg, "content", "") or str(msg)
+            break
+    extracted_params = state.get("extracted_params") or {}
 
-        fact_issues = _check_facts(
-            synthesis, tool_results, intent,
-            last_user_message=last_user_message,
-            extracted_params=extracted_params,
-        )
-        all_issues.extend(fact_issues)
+    fact_issues = _check_facts(
+        synthesis, tool_results, intent,
+        last_user_message=last_user_message,
+        extracted_params=extracted_params,
+    )
+    all_issues.extend(fact_issues)
 
-        price_quote_issues = _check_price_quote_freshness(intent, tool_results, synthesis)
-        all_issues.extend(price_quote_issues)
+    price_quote_issues = _check_price_quote_freshness(intent, tool_results, synthesis)
+    all_issues.extend(price_quote_issues)
 
-        confidence = _compute_confidence(state)
+    confidence = _compute_confidence(state)
 
-        guardrail_issues = _check_guardrails(synthesis, intent, tool_results)
-        all_issues.extend(guardrail_issues)
+    guardrail_issues = _check_guardrails(synthesis, intent, tool_results)
+    all_issues.extend(guardrail_issues)
 
-        tax_issues = _check_tax_estimate_sanity(synthesis, tool_results)
-        all_issues.extend(tax_issues)
+    tax_issues = _check_tax_estimate_sanity(synthesis, tool_results)
+    all_issues.extend(tax_issues)
 
-        compliance_issues = _check_compliance_consistency(synthesis, tool_results)
-        all_issues.extend(compliance_issues)
+    compliance_issues = _check_compliance_consistency(synthesis, tool_results)
+    all_issues.extend(compliance_issues)
 
-        passed = len(all_issues) == 0
+    passed = len(all_issues) == 0
 
     verification_result = {
         "passed": passed,
@@ -426,7 +429,7 @@ def verify_node(state: AgentState) -> dict[str, Any]:
     }
 
     verify_key = f"verify_{attempts}"
-    node_latencies[verify_key] = timing.get("elapsed_seconds", 0)
+    node_latencies[verify_key] = round(time.perf_counter() - _start, 4)
     trace_log.append(make_trace_entry(
         verify_key,
         input_summary=f"synthesis ({len(synthesis)} chars)",
@@ -439,16 +442,3 @@ def verify_node(state: AgentState) -> dict[str, Any]:
         "node_latencies": node_latencies,
         "trace_log": trace_log,
     }
-
-
-def route_after_verification(state: AgentState) -> str:
-    """Route: pass → format, fail → re-synthesize, max_retries → format with warnings."""
-    verification = state.get("verification_result", {})
-    attempts = state.get("verification_attempts", 0)
-
-    if verification.get("passed", False):
-        return "pass"
-    elif attempts >= 2:
-        return "max_retries"
-    else:
-        return "fail"

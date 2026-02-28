@@ -1,4 +1,4 @@
-"""LangChain tool wrappers for binding to the ReAct agent LLM."""
+"""LangChain tool wrappers for the portfolio intelligence agent."""
 
 from __future__ import annotations
 
@@ -29,13 +29,13 @@ def get_market_data(
     interval: str = "1d",
     bypass_cache: bool = False,
 ) -> dict:
-    """Fetch OHLCV price data and technical indicators (RSI, SMA, EMA, MACD, Bollinger Bands, ATR) for one or more ticker symbols.
+    """Fetch price history and market context for one or more ticker symbols. Returns OHLCV data and key indicators.
 
-    Use this when you need current or historical price data, chart analysis, or technical indicator values.
+    Use when you need current prices, historical performance, or market context for investment decisions.
 
     Args:
         symbols: List of ticker symbols, e.g. ["AAPL", "MSFT"].
-        period: Time period — e.g. "1d", "5d", "1mo", "3mo", "6mo", "1y", "60d". Use "1d" with interval "1h" for intraday/current prices.
+        period: Time period — e.g. "1d", "5d", "1mo", "3mo", "6mo", "1y", "60d". Use "1d" with interval "1h" for current prices.
         interval: Data interval — "1d" for daily, "1h" for hourly.
         bypass_cache: Set True when you need the freshest data (e.g. current price quotes).
     """
@@ -44,7 +44,7 @@ def get_market_data(
 
 @tool
 def get_portfolio_snapshot() -> dict:
-    """Fetch the trader's current portfolio: holdings, performance, accounts, and summary (total value, cash, P&L).
+    """Fetch the investor's current portfolio: holdings, performance, accounts, and summary (total value, cash, P&L).
 
     Holdings include current market value and cost basis (investment). Market prices are refreshed from a live feed so values reflect current prices — use this for tax exposure / \"if I sell\" questions. Use when you need current holdings, cash balance, portfolio value, or allocation.
     """
@@ -96,15 +96,15 @@ def trade_guardrails_check(
     position_size_pct: Optional[float] = None,
     dollar_amount: Optional[float] = None,
 ) -> dict:
-    """Check if a proposed buy or sell fits portfolio guardrails.
+    """Evaluate whether a proposed buy or sell fits portfolio risk guidelines.
 
-    For buys: checks position size (max 5%), sector concentration (max 30%), correlation, cash availability.
-    Returns violations, warnings, suggested position size, and stop loss level.
-    For sells: evaluates reasons to sell/hold, P&L, hold period, stop loss, and portfolio after sale.
+    For buys: checks position size (max 5%), sector concentration (max 30%), cash availability.
+    Returns violations, warnings, and suggested position size.
+    For sells: evaluates reasons to sell/hold, P&L, hold period, and portfolio impact after sale.
 
     Args:
         symbol: Ticker symbol to evaluate (e.g. "AAPL").
-        side: "buy" to evaluate adding a position, "sell" to evaluate selling.
+        side: "buy" to evaluate adding a position, "sell" to evaluate reducing/exiting.
         position_size_pct: Proposed position as percentage of portfolio (alternative to dollar_amount).
         dollar_amount: Proposed dollar amount (alternative to position_size_pct).
     """
@@ -121,7 +121,7 @@ def get_trade_history(
     time_range: str = "90d",
     symbol: Optional[str] = None,
 ) -> dict:
-    """Fetch trade history and compute P&L outcomes: win rate, average win/loss, profit factor, hold times.
+    """Fetch investment transaction history and compute performance metrics: returns, average gain/loss, hold periods, and open position P&L.
 
     Args:
         time_range: Lookback period — e.g. "90d", "6m", "1y".
@@ -154,9 +154,9 @@ def create_activity(
     comment: Optional[str] = None,
     **kwargs: Any,
 ) -> dict:
-    """Record a transaction or portfolio activity in Ghostfolio (buy, sell, dividend, fee, etc.).
+    """Record a portfolio activity in Ghostfolio (buy, sell, dividend, fee, etc.).
 
-    You HAVE this tool. Use it when the user asks to record a transaction, log a trade, add a buy/sell, record an activity, or save a transaction to their portfolio. If the user does not give all details (symbol, quantity, price, date, currency), ask for the missing details first, then call this tool. For BUY/SELL use activity_type "BUY" or "SELL". For recording a trade you may first run check_risk and optionally get_portfolio_snapshot to get account_id when the user has multiple accounts.
+    Use when the investor asks to record a transaction, log an investment, add a buy/sell, or save an activity to their portfolio. If the user does not give all details (symbol, quantity, price, date, currency), ask for the missing details first, then call this tool. For BUY/SELL use activity_type "BUY" or "SELL". You may call get_portfolio_snapshot first to get account_id when the user has multiple accounts.
 
     Args:
         activity_type: One of BUY, SELL, DIVIDEND, FEE, INTEREST, LIABILITY.
@@ -238,9 +238,9 @@ def tax_estimate(
 
 @tool
 def compliance_check(transaction: dict, regulations: list[str]) -> dict:
-    """Check a transaction against regulatory/tax regulations (e.g. wash_sale, capital_gains, tax_loss_harvesting).
+    """Check a transaction against regulatory and tax rules (e.g. wash_sale, capital_gains, tax_loss_harvesting).
 
-    For portfolio risk limits use portfolio_guardrails_check or trade_guardrails_check.
+    For portfolio-level risk limits use portfolio_guardrails_check or trade_guardrails_check.
 
     Args:
         transaction: Order-like dict with type, symbol, quantity, unitPrice, date.
@@ -287,7 +287,21 @@ ALL_TOOLS = [
     compliance_check,
 ]
 
+PHASE1_TOOLS = [
+    get_market_data,
+    get_portfolio_snapshot,
+    portfolio_guardrails_check,
+    trade_guardrails_check,
+    get_trade_history,
+    lookup_symbol,
+    create_activity,
+    add_to_watchlist,
+    transaction_categorize,
+    tax_estimate,
+    compliance_check,
+]
+
 
 def get_tools() -> list:
-    """Return the list of LangChain tools available to the ReAct agent."""
-    return list(ALL_TOOLS)
+    """Return the Phase 1 tool set (11 core tools). Fewer tools = faster, more reliable selection."""
+    return list(PHASE1_TOOLS)

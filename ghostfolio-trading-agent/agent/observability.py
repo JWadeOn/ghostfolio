@@ -11,9 +11,12 @@ from typing import Any, Generator
 
 logger = logging.getLogger(__name__)
 
-# Approximate cost per 1M tokens (Claude Sonnet 4, as of 2025)
-COST_PER_1M_INPUT = 3.00
-COST_PER_1M_OUTPUT = 15.00
+MODEL_PRICING: dict[str, tuple[float, float]] = {
+    "claude-sonnet-4-20250514": (3.00, 15.00),
+    "claude-haiku-4-5": (1.00, 5.00),
+}
+DEFAULT_COST_PER_1M_INPUT = 3.00
+DEFAULT_COST_PER_1M_OUTPUT = 15.00
 
 
 def extract_token_usage(response: Any) -> dict:
@@ -37,7 +40,7 @@ def extract_token_usage(response: Any) -> dict:
     return usage
 
 
-def aggregate_token_usage(token_usage: dict) -> dict:
+def aggregate_token_usage(token_usage: dict, model: str | None = None) -> dict:
     """Compute totals and estimated cost across all tracked LLM calls."""
     total_in = 0
     total_out = 0
@@ -47,7 +50,10 @@ def aggregate_token_usage(token_usage: dict) -> dict:
         if isinstance(val, dict):
             total_in += val.get("input_tokens", 0)
             total_out += val.get("output_tokens", 0)
-    cost = (total_in / 1_000_000) * COST_PER_1M_INPUT + (total_out / 1_000_000) * COST_PER_1M_OUTPUT
+    cost_in, cost_out = MODEL_PRICING.get(
+        model or "", (DEFAULT_COST_PER_1M_INPUT, DEFAULT_COST_PER_1M_OUTPUT),
+    )
+    cost = (total_in / 1_000_000) * cost_in + (total_out / 1_000_000) * cost_out
     return {
         "input_tokens": total_in,
         "output_tokens": total_out,
