@@ -44,7 +44,7 @@ REACT_SYSTEM_PROMPT = """You are a portfolio intelligence assistant. You help in
 | Investment evaluation ("should I buy/sell X?") | get_portfolio_snapshot + get_market_data(X) + trade_guardrails_check(X, side) |
 | Performance ("best/worst performers?", "returns?", "win rate?") | get_trade_history + get_portfolio_snapshot |
 | Tax planning ("tax bill?", "estimate taxes", "tax implications") | tax_estimate — also add get_portfolio_snapshot + get_trade_history if selling is involved |
-| Compliance ("wash sale?", "trigger wash sale", "wash sale rules", "capital gains?", "tax-loss harvesting?") | compliance_check + get_trade_history |
+| Compliance ("wash sale?", "trigger wash sale", "wash sale rules", "capital gains?", "tax-loss harvesting?", "compliance issues?") | compliance_check(regulations=["wash_sale","capital_gains","tax_loss_harvesting"]) + get_trade_history — omit `transaction` to auto-scan all holdings |
 | Price check ("what's X trading at?") | get_market_data(X) |
 | Symbol lookup ("ticker for Apple?") | lookup_symbol(query) |
 | Watchlist ("add X to watchlist") | add_to_watchlist(X) |
@@ -57,15 +57,19 @@ REACT_SYSTEM_PROMPT = """You are a portfolio intelligence assistant. You help in
 - "Sell AAPL, buy MSFT — tax impact?" → get_portfolio_snapshot + get_market_data(AAPL, MSFT) + trade_guardrails_check + tax_estimate + compliance_check
 - "Tax-loss harvesting" → get_trade_history + compliance_check
 - "recent transactions wash sale?" → get_trade_history + compliance_check
+- "do I have any wash sale issues?" → compliance_check(regulations=["wash_sale"]) + get_trade_history — ALWAYS use compliance_check for wash sale questions
+- "any compliance issues?" → compliance_check + get_trade_history
 - "Add $10k — which position?" → get_portfolio_snapshot + portfolio_guardrails_check + get_market_data
 - "Would buying X over-concentrate my portfolio/sector?" → get_portfolio_snapshot + portfolio_guardrails_check + get_market_data(X) — concentration/sector question, not a buy-size evaluation; do not call trade_guardrails_check here.
-- "Complete review" → get_portfolio_snapshot + portfolio_guardrails_check + get_trade_history + tax_estimate
+- "Complete review" → get_portfolio_snapshot + portfolio_guardrails_check + get_trade_history + compliance_check
+- "Sell X to buy Y — tax impact + diversification?" → get_portfolio_snapshot + portfolio_guardrails_check + compliance_check + tax_estimate (if income details available) + get_market_data
 
 
 ### Extra context on when to call tools:
 compliance_check should be used when: "wash sale", "trigger wash sale", "could selling X cause a wash sale",
 "if I sold today", "would this trigger", "capital gains", "short-term vs long-term",
-"tax-loss harvesting", "compliance issues", "complete review".
+"tax-loss harvesting", "compliance issues", "complete review", "any wash sale issues".
+For general compliance questions (e.g. "do I have any wash sale issues?"), call compliance_check WITHOUT a transaction — it will auto-scan all holdings. Only provide a transaction dict when checking a specific proposed trade.
 
 ### Efficiency rule:
 Call ALL required tools in ONE parallel step. Only split into sequential steps when a later tool genuinely depends on an earlier result. Aim for 1–2 steps maximum.

@@ -38,13 +38,21 @@ def mock_env():
 )
 def test_golden_case(case, agent_graph):
     eval_result = run_single_eval(case, agent_graph, case_id=0, use_mocks=True)
+
+    # Surface react_step count for structural checks
+    response = eval_result.get("response") or {}
+    observability = response.get("observability") or {}
+    node_latencies = eval_result.get("node_latencies") or observability.get("node_latencies") or {}
+    react_steps = sum(1 for k in node_latencies if k.startswith("react_agent_"))
+    eval_result["react_step"] = react_steps
+
     checks = run_golden_checks(case, eval_result)
 
     if not checks["passed"]:
         failures = []
-        for dim in ("tool_selection", "source_citation", "content", "negative"):
-            dim_result = checks[dim]
-            if not dim_result["passed"]:
+        for dim in ("tool_selection", "tool_execution", "source_citation", "content", "negative", "ground_truth", "structural"):
+            dim_result = checks.get(dim, {})
+            if not dim_result.get("passed", True):
                 err = dim_result.get("error", "")
                 if err:
                     failures.append(f"[{dim}] {err}")

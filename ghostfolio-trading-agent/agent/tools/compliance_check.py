@@ -265,29 +265,17 @@ def _stub_regulation(reg_id: str, transaction: dict, context: dict) -> list[dict
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def compliance_check(
-    transaction: dict,
-    regulations: list[str],
-    client: GhostfolioClient | None = None,
-) -> dict[str, Any]:
-    """Check a transaction against regulatory/tax compliance rules.
-
-    Args:
-        transaction: Order-like dict with type, symbol, quantity, unitPrice, date, etc.
-        regulations: List of regulation IDs to check (e.g. ["wash_sale", "capital_gains"]).
-        client: GhostfolioClient for fetching context (order history, holdings).
-    """
-    txn_symbol = (transaction.get("symbol") or "").upper()
-
+def _build_context(symbol: str, client: GhostfolioClient | None) -> dict[str, Any]:
+    """Build context dict for a single symbol's compliance checks."""
     context: dict[str, Any] = {}
-    if client and txn_symbol:
-        context["recent_orders"] = _get_recent_orders(txn_symbol, client, days=WASH_SALE_WINDOW_DAYS + 10)
-        context["all_orders"] = _get_all_orders(txn_symbol, client)
+    if client and symbol:
+        context["recent_orders"] = _get_recent_orders(symbol, client, days=WASH_SALE_WINDOW_DAYS + 10)
+        context["all_orders"] = _get_all_orders(symbol, client)
 
         buy_orders = [
             o for o in context["all_orders"]
             if (o.get("type") or "").upper() == "BUY"
-            and (o.get("symbol") or (o.get("SymbolProfile") or {}).get("symbol") or "").upper() == txn_symbol
+            and (o.get("symbol") or (o.get("SymbolProfile") or {}).get("symbol") or "").upper() == symbol
         ]
         total_cost = sum((o.get("unitPrice", 0) or 0) * (o.get("quantity", 0) or 0) for o in buy_orders)
         total_qty = sum(o.get("quantity", 0) or 0 for o in buy_orders)
@@ -308,28 +296,135 @@ def compliance_check(
         context["all_orders"] = []
         context["avg_cost_per_share"] = 0
         context["holdings"] = []
+    return context
 
-    all_violations: list[dict] = []
-    all_warnings: list[dict] = []
 
+def _run_checks_for_transaction(
+    transaction: dict, regulations: list[str], context: dict,
+) -> tuple[list[dict], list[dict]]:
+    """Run regulation checks for a single transaction. Returns (violations, warnings)."""
+    violations: list[dict] = []
+    warnings: list[dict] = []
     for reg_id in regulations:
         check_fn = REGULATION_REGISTRY.get(reg_id)
         if check_fn:
             findings = check_fn(transaction, context)
         else:
             findings = _stub_regulation(reg_id, transaction, context)
-
         for f in findings:
             severity = f.get("severity", "warning")
             if severity == "violation":
-                all_violations.append(f)
+                violations.append(f)
             else:
-                all_warnings.append(f)
+                warnings.append(f)
+    return violations, warnings
 
-    passed = len(all_violations) == 0
+
+def compliance_check(
+    transaction: dict | None = None,
+    regulations: list[str] | None = None,
+    client: GhostfolioClient | None = None,
+) -> dict[str, Any]:
+    """Check a transaction against regulatory/tax compliance rules.
+
+    Two modes:
+      1. Single-transaction: provide transaction dict → checks that specific trade.
+      2. Portfolio scan: omit transaction (or pass empty dict) → scans all current
+         holdings with hypothetical sell transactions to flag wash-sale risk,
+         capital-gains classification, and tax-loss harvesting opportunities.
+
+    Args:
+        transaction: Order-like dict with type, symbol, quantity, unitPrice, date.
+                     If omitted/empty, auto-scans all portfolio positions.
+        regulations: List of regulation IDs to check (e.g. ["wash_sale", "capital_gains"]).
+                     Defaults to all available regulations when omitted.
+        client: GhostfolioClient for fetching context (order history, holdings).
+    """
+    if not regulations:
+        regulations = list(REGULATION_REGISTRY.keys())
+
+    # Portfolio-scan mode: no specific transaction → check every holding
+    if not transaction or not transaction.get("symbol"):
+        return _scan_all_positions(regulations, client)
+
+    txn_symbol = (transaction.get("symbol") or "").upper()
+    context = _build_context(txn_symbol, client)
+
+    violations, warnings = _run_checks_for_transaction(transaction, regulations, context)
+
+    return {
+        "violations": violations,
+        "warnings": warnings,
+        "passed": len(violations) == 0,
+    }
+
+
+def _scan_all_positions(
+    regulations: list[str],
+    client: GhostfolioClient | None,
+) -> dict[str, Any]:
+    """Scan all portfolio positions for compliance issues (wash sale, capital gains, etc.)."""
+    all_violations: list[dict] = []
+    all_warnings: list[dict] = []
+    symbols_scanned: list[str] = []
+
+    holdings: list[dict] = []
+    if client:
+        try:
+            holdings_data = client.get_holdings()
+            if isinstance(holdings_data, dict) and "holdings" in holdings_data:
+                holdings = holdings_data["holdings"]
+            elif isinstance(holdings_data, list):
+                holdings = holdings_data
+        except Exception as e:
+            logger.warning("Failed to fetch holdings for compliance scan: %s", e)
+            return {
+                "violations": [],
+                "warnings": [{"rule": "scan", "severity": "warning",
+                              "message": f"Could not fetch holdings: {e}"}],
+                "passed": True,
+                "scan_mode": True,
+                "symbols_scanned": [],
+            }
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    for h in holdings:
+        symbol = (h.get("symbol") or "").upper()
+        if not symbol:
+            continue
+        symbols_scanned.append(symbol)
+
+        market_price = h.get("marketPrice", 0) or 0
+        quantity = h.get("quantity", 0) or 0
+
+        # Construct a hypothetical sell transaction at current price
+        hypothetical_sell = {
+            "type": "SELL",
+            "symbol": symbol,
+            "quantity": quantity,
+            "unitPrice": market_price,
+            "date": today_str,
+        }
+
+        context = _build_context(symbol, client)
+        violations, warnings = _run_checks_for_transaction(
+            hypothetical_sell, regulations, context,
+        )
+        all_violations.extend(violations)
+        all_warnings.extend(warnings)
+
+    if not holdings:
+        all_warnings.append({
+            "rule": "scan",
+            "severity": "info",
+            "message": "No holdings found to scan for compliance issues.",
+        })
 
     return {
         "violations": all_violations,
         "warnings": all_warnings,
-        "passed": passed,
+        "passed": len(all_violations) == 0,
+        "scan_mode": True,
+        "symbols_scanned": symbols_scanned,
     }

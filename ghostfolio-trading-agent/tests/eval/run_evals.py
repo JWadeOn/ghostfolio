@@ -45,6 +45,7 @@ WEIGHT_CONFIDENCE = 0.15
 WEIGHT_VERIFICATION = 0.10
 PASS_THRESHOLD = 0.8
 TARGET_PASS_RATE_PCT = 80
+TARGET_TOOL_SUCCESS_RATE_PCT = 95
 
 MAX_LATENCY_SECONDS = float(os.environ.get("EVAL_MAX_LATENCY_SECONDS", "120"))
 
@@ -564,6 +565,7 @@ def write_eval_report(
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     path = reports_dir / f"eval-results-{timestamp}.json"
     pass_rate = aggregate.get("pass_rate_pct", 0)
+    tool_success_pct = aggregate.get("tool_success_rate_pct", 0)
     payload = {
         "run_metadata": {
             "timestamp": timestamp,
@@ -571,6 +573,8 @@ def write_eval_report(
             "pass_threshold": PASS_THRESHOLD,
             "target_pass_rate_pct": TARGET_PASS_RATE_PCT,
             "target_met": pass_rate >= TARGET_PASS_RATE_PCT,
+            "target_tool_success_rate_pct": TARGET_TOOL_SUCCESS_RATE_PCT,
+            "tool_success_target_met": tool_success_pct >= TARGET_TOOL_SUCCESS_RATE_PCT,
             "max_latency_seconds": MAX_LATENCY_SECONDS,
         },
         "aggregate": aggregate,
@@ -865,10 +869,14 @@ def main() -> int:
     print(f"\n{'='*60}")
     print(f"Eval Results: {passed}/{total} passed ({pass_rate}%)")
     print(f"Avg overall score: {aggregate['avg_overall_score']:.2f} (threshold={PASS_THRESHOLD})")
+    tool_success_pct = aggregate.get("tool_success_rate_pct", 0)
+    print(f"Tool success rate: {tool_success_pct}% (target ≥{TARGET_TOOL_SUCCESS_RATE_PCT}%)")
     print(f"Max latency: {MAX_LATENCY_SECONDS}s")
     print(f"Report: {out_path}")
     target_met = pass_rate >= TARGET_PASS_RATE_PCT
     print(f"Target met (≥{TARGET_PASS_RATE_PCT}%): {'yes' if target_met else 'no'}")
+    tool_success_met = tool_success_pct >= TARGET_TOOL_SUCCESS_RATE_PCT
+    print(f"Tool success target met (≥{TARGET_TOOL_SUCCESS_RATE_PCT}%): {'yes' if tool_success_met else 'no'}")
     if regression_delta is not None:
         print(f"Regression delta: {regression_delta:.1f}%")
     if consistency_results:
@@ -888,7 +896,7 @@ def main() -> int:
     if experiment_url:
         print(f"LangSmith experiment: {experiment_url}")
 
-    return 0 if target_met and (regression_delta is None or regression_delta >= 0) else 1
+    return 0 if (target_met and tool_success_met and (regression_delta is None or regression_delta >= 0)) else 1
 
 
 if __name__ == "__main__":

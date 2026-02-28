@@ -1,10 +1,13 @@
 """Deterministic, binary checks for the golden eval set.
 
-Four check types — all pure functions, no LLM calls:
+Seven check types — all pure functions, no LLM calls:
   1. Tool selection     — required tools present; or expected_tools_any: at least one of list or no tools; or expected_tools_plus_any_of: all expected_tools plus at least one of list. No extras when exact_tools is set.
-  2. Source citation     — expected source references appear in response text.
-  3. Content validation  — all must_contain terms appear in response; optionally at least one of expected_output_contains_any.
-  4. Negative validation — no must_not_contain terms, no give-up phrases, non-empty.
+  2. Tool execution     — for cases that called tools, no tool returned an error (tool_errors empty).
+  3. Source citation     — expected source references appear in response text.
+  4. Content validation  — all must_contain terms appear in response; optionally at least one of expected_output_contains_any.
+  5. Negative validation — no must_not_contain terms, no give-up phrases, non-empty.
+  6. Ground truth        — known mock-data values appear in response (e.g. "$187.50").
+  7. Structural          — react_step count and per-case latency within budget.
 """
 
 from __future__ import annotations
@@ -121,7 +124,7 @@ def check_must_not_contain(
         if term.lower() in text_lower:
             errors.append(f"Forbidden term found: '{term}'")
 
-    for phrase in (give_up_phrases or DEFAULT_GIVE_UP_PHRASES):
+    for phrase in (give_up_phrases if give_up_phrases is not None else DEFAULT_GIVE_UP_PHRASES):
         if phrase.lower() in text_lower:
             errors.append(f"Give-up phrase found: '{phrase}'")
 
@@ -131,8 +134,49 @@ def check_must_not_contain(
     return (True, "")
 
 
+def check_ground_truth(terms: list[str], response_text: str) -> tuple[bool, str]:
+    """Check that known ground-truth values from mock data appear in the response."""
+    if not terms:
+        return (True, "")
+
+    text_lower = response_text.lower()
+    missing = [t for t in terms if str(t).lower() not in text_lower]
+
+    if missing:
+        return (False, f"Missing ground truth values: {missing}")
+
+    return (True, "")
+
+
+def check_structural(
+    react_step: int | None,
+    max_react_steps: int | None,
+    latency_seconds: float | None,
+    max_latency_seconds: float | None,
+) -> tuple[bool, str]:
+    """Check react step count and latency against per-case budgets."""
+    errors = []
+
+    if max_react_steps is not None and react_step is not None:
+        if react_step > max_react_steps:
+            errors.append(
+                f"ReAct steps {react_step} exceeds max {max_react_steps}"
+            )
+
+    if max_latency_seconds is not None and latency_seconds is not None:
+        if latency_seconds > max_latency_seconds:
+            errors.append(
+                f"Latency {latency_seconds:.1f}s exceeds max {max_latency_seconds}s"
+            )
+
+    if errors:
+        return (False, "; ".join(errors))
+
+    return (True, "")
+
+
 def run_golden_checks(case: dict, result: dict) -> dict:
-    """Run all four golden checks and return structured result."""
+    """Run all seven golden checks and return structured result."""
     response = result.get("response") or {}
     response_text = response.get("summary") or ""
     tools_called = result.get("tools_called") or []
@@ -155,13 +199,23 @@ def run_golden_checks(case: dict, result: dict) -> dict:
             exact=case.get("exact_tools", False),
         )
 
-    # 2. Source citation
+    # 2. Tool execution — no tool returned {"error": ...} for this case
+    tools_called = result.get("tools_called") or []
+    tool_errors = result.get("tool_errors") or []
+    if tools_called:
+        tool_exec_ok = len(tool_errors) == 0
+        tool_exec_err = "; ".join(tool_errors) if tool_errors else ""
+    else:
+        tool_exec_ok = True  # N/A when no tools called
+        tool_exec_err = ""
+
+    # 3. Source citation
     source_ok, source_err = check_sources(
         case.get("expected_sources", []),
         response_text,
     )
 
-    # 3. Content validation
+    # 4. Content validation
     must_contain = list(case.get("expected_output_contains") or []) + list(case.get("should_contain") or [])
     content_ok, content_err = check_must_contain(must_contain, response_text)
 
@@ -172,19 +226,38 @@ def run_golden_checks(case: dict, result: dict) -> dict:
         if not any_ok:
             content_ok, content_err = False, any_err
 
-    # 4. Negative validation
+    # 5. Negative validation
     negative_ok, negative_err = check_must_not_contain(
         case.get("should_not_contain", []),
         response_text,
     )
 
-    all_checks = [tool_ok, source_ok, content_ok, negative_ok]
+    # 6. Ground truth validation
+    ground_truth_ok, ground_truth_err = check_ground_truth(
+        case.get("ground_truth_contains", []),
+        response_text,
+    )
+
+    # 7. Structural validation (react steps + latency)
+    react_step = result.get("react_step")
+    latency_seconds = result.get("latency_seconds")
+    structural_ok, structural_err = check_structural(
+        react_step=react_step,
+        max_react_steps=case.get("max_react_steps"),
+        latency_seconds=latency_seconds,
+        max_latency_seconds=case.get("max_latency_seconds"),
+    )
+
+    all_checks = [tool_ok, tool_exec_ok, source_ok, content_ok, negative_ok, ground_truth_ok, structural_ok]
     all_passed = all(c for c in all_checks if c is not None)
 
     return {
         "passed": all_passed,
         "tool_selection": {"passed": tool_ok, "error": tool_err},
+        "tool_execution": {"passed": tool_exec_ok, "error": tool_exec_err},
         "source_citation": {"passed": source_ok, "error": source_err},
         "content": {"passed": content_ok, "error": content_err},
         "negative": {"passed": negative_ok, "error": negative_err},
+        "ground_truth": {"passed": ground_truth_ok, "error": ground_truth_err},
+        "structural": {"passed": structural_ok, "error": structural_err},
     }

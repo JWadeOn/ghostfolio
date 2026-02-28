@@ -365,22 +365,50 @@ def trade_guardrails_check(
 
             if symbol in closes and len(closes[symbol]) > 5:
                 import pandas as pd
+                import numpy as np
                 df = pd.DataFrame(closes).dropna()
                 if len(df) >= 10:
                     returns = df.pct_change().dropna()
-                    import numpy as np
-                    if returns.std().gt(0).sum() >= 2 and symbol in returns.columns:
-                        for h_sym in holding_symbols[:10]:
-                            if h_sym in returns.columns:
-                                if returns[h_sym].std() > 0 and returns[symbol].std() > 0:
-                                    corr = returns[symbol].corr(returns[h_sym])
-                                    if not (np.isnan(corr) or np.isinf(corr)) and corr > MAX_CORRELATION:
-                                        warnings.append({
-                                            "rule": "correlation",
-                                            "message": f"High correlation ({corr:.2f}) with existing holding {h_sym}",
-                                            "correlated_with": h_sym,
-                                            "correlation": round(float(corr), 3),
-                                        })
+                    # Avoid pandas .corr() / linalg paths that can trigger SIGFPE (OpenBLAS) on
+                    # ill-conditioned or near-constant columns. Compute pairwise correlation
+                    # manually with strict std checks.
+                    arr = returns.values.astype(np.float64)
+                    if np.any(np.isnan(arr)) or np.any(np.isinf(arr)):
+                        pass
+                    else:
+                        n, _ = arr.shape
+                        col_std = np.nanstd(arr, axis=0)
+                        if n < 2 or np.sum(col_std > 1e-12) < 2:
+                            pass
+                        else:
+                            sym_idx = returns.columns.get_loc(symbol) if symbol in returns.columns else None
+                            if sym_idx is None:
+                                pass
+                            else:
+                                mean_sym = np.nanmean(arr[:, sym_idx])
+                                centered_sym = arr[:, sym_idx] - mean_sym
+                                std_sym = col_std[sym_idx]
+                                if std_sym <= 1e-12:
+                                    pass
+                                else:
+                                    for h_sym in holding_symbols[:10]:
+                                        if h_sym not in returns.columns:
+                                            continue
+                                        j = returns.columns.get_loc(h_sym)
+                                        std_j = col_std[j]
+                                        if std_j <= 1e-12:
+                                            continue
+                                        mean_j = np.nanmean(arr[:, j])
+                                        centered_j = arr[:, j] - mean_j
+                                        c = np.dot(centered_sym, centered_j) / (n - 1)
+                                        r = c / (std_sym * std_j)
+                                        if -1.1 <= r <= 1.1 and not (np.isnan(r) or np.isinf(r)) and r > MAX_CORRELATION:
+                                            warnings.append({
+                                                "rule": "correlation",
+                                                "message": f"High correlation ({float(r):.2f}) with existing holding {h_sym}",
+                                                "correlated_with": h_sym,
+                                                "correlation": round(float(r), 3),
+                                            })
         except Exception as e:
             logger.warning("Correlation check failed: %s", e)
 

@@ -63,7 +63,8 @@ def mock_fetch_with_retry(
     result: dict[str, pd.DataFrame] = {}
     num_days = 252
     if period in ("1d", "5d"):
-        num_days = 5 if period == "5d" else 1
+        # Always generate at least 5 bars so indicator computation doesn't IndexError
+        num_days = 5
     elif "d" in period:
         try:
             num_days = min(252, int(period.replace("d", "")))

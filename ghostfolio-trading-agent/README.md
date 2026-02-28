@@ -480,6 +480,23 @@ The agent is evaluated with a **scored eval suite** that runs natural-language t
 
 A case **passes** if overall score >= 0.8, there are no errors, and latency is within bounds.
 
+### Tool success rate (PRD target >95%)
+
+**Definition:** Among eval cases where the agent called at least one tool, the fraction where **every** tool returned without an error (no `{"error": "..."}` in `tool_results`).
+
+**Status:** Measured in every full eval run. Recent runs vary (e.g. 73–100%); meeting the 95% target depends on tool stability and mock/live data.
+
+**How it's measured:**
+
+- **Full eval:** For each case, `run_evals.py` inspects `result["tool_results"]`. If any tool returns a dict with an `"error"` key, that case is counted as a tool failure. The aggregate **tool_success_rate_pct** = 100 × (cases with tools and no tool_errors) / (cases that called any tool). It is written to `reports/eval-results-{timestamp}.json` under `aggregate.tool_success_rate_pct` and `run_metadata.tool_success_target_met`.
+- **Golden set:** Each golden case now has a **tool_execution** check: if the case called tools, it passes only when `tool_errors` is empty. The golden report includes **tool_success_rate_pct** (same definition over golden cases that use tools) in the JSON when you run `python3 tests/eval/run_golden.py --report`.
+
+**How to prove it:**
+
+1. **Full suite:** Run `python3 tests/eval/run_evals.py`. The script prints `Tool success rate: X% (target ≥95%)` and `Tool success target met (≥95%): yes/no`. Exit code is **0** only if both pass-rate and tool-success targets are met (and no regression). So a successful run proves tool success ≥95% for that run.
+2. **Golden set:** Run `python3 tests/eval/run_golden.py --report` and open the latest `reports/golden-results-{timestamp}.json`: check `tool_success_rate_pct` and that all cases with `tools_called` have `checks.tool_execution.passed: true`.
+3. **CI:** Use the full eval as a gate: `python3 tests/eval/run_evals.py` exiting 0 implies tool success target met.
+
 ### Dataset
 
 Eval cases live in **`tests/eval/dataset.py`** in a LangSmith-compatible format. The suite includes **69+ cases** across categories (Phase 1 long-term investor focus; Phase 2 regime/scan). Categories include: `risk_check`, `portfolio_overview`, `portfolio_health`, `performance_review`, `tax_implications`, `compliance`, `price_quote`, `lookup_symbol`, `create_activity`, `add_to_watchlist`, `transaction_categorize`, `edge_invalid`, `edge_ambiguous`, `adversarial`, `multi_step`, and Phase 2 `regime_check`, `opportunity_scan`.
@@ -490,14 +507,17 @@ To add or change cases, edit `tests/eval/dataset.py`. Each case can specify `exp
 
 The **golden set** is a curated set of **25 cases** that act as a first line of defense: 11 happy path (one per major tool), 5 edge, 5 adversarial, 4 multi-step (+ 1 single-tool compliance). They are fast, deterministic, and binary — if any golden case fails, something is fundamentally broken. Run them after every commit.
 
-Golden checks use four dimensions (all code-based, no LLM scoring):
+Golden checks use seven dimensions (all code-based, no LLM scoring):
 
-| Check                   | What it catches                                       |
-| ----------------------- | ----------------------------------------------------- |
-| **Tool selection**      | Agent called the wrong tool or missed a required one  |
-| **Source citation**     | Agent cited the wrong data source in its response     |
-| **Content validation**  | Response is missing key facts or terms                |
-| **Negative validation** | Agent hallucinated, gave up, or produced empty output |
+| Check                   | What it catches                                        |
+| ----------------------- | ------------------------------------------------------ |
+| **Tool selection**      | Agent called the wrong tool or missed a required one   |
+| **Tool execution**      | One or more tools returned an error (`{"error": ...}`) |
+| **Source citation**     | Agent cited the wrong data source in its response      |
+| **Content validation**  | Response is missing key facts or terms                 |
+| **Negative validation** | Agent hallucinated, gave up, or produced empty output  |
+| **Ground truth**        | Known mock values (e.g. prices) appear in the response |
+| **Structural**          | ReAct step count and latency within per-case limits    |
 
 **Run the golden set:**
 

@@ -238,14 +238,21 @@ def tax_estimate(
 
 
 @tool
-def compliance_check(transaction: dict, regulations: list[str]) -> dict:
-    """Check a transaction against regulatory and tax rules (e.g. wash_sale, capital_gains, tax_loss_harvesting).
+def compliance_check(
+    regulations: Optional[list[str]] = None,
+    transaction: Optional[dict] = None,
+) -> dict:
+    """Check compliance rules: wash sale, capital gains classification, and tax-loss harvesting.
 
-    Use when: "wash sale", "trigger wash sale", "wash sale rules", "tax-loss harvesting", "short-term vs long-term", "holding period", "compliance issues", "complete review". For portfolio-level risk limits use portfolio_guardrails_check or trade_guardrails_check.
+    Two modes:
+    1. Portfolio scan (default): omit transaction → scans ALL current holdings for wash sale risk, capital gains classification, and harvesting opportunities. Use this for general questions like "any wash sale issues?", "compliance issues?", "complete review".
+    2. Single transaction: provide transaction dict → checks that specific trade.
+
+    Use when: "wash sale", "trigger wash sale", "wash sale rules", "do I have wash sale issues", "tax-loss harvesting", "short-term vs long-term", "holding period", "compliance issues", "complete review", "if I sold today". For portfolio-level risk limits use portfolio_guardrails_check or trade_guardrails_check.
 
     Args:
-        transaction: Order-like dict with type, symbol, quantity, unitPrice, date.
-        regulations: List of regulation IDs to check (e.g. ["wash_sale", "capital_gains", "tax_loss_harvesting"]).
+        regulations: List of regulation IDs to check. Options: "wash_sale", "capital_gains", "tax_loss_harvesting". Defaults to all if omitted.
+        transaction: Optional order-like dict with type, symbol, quantity, unitPrice, date. Omit to scan all holdings.
     """
     return _compliance_check(transaction=transaction, regulations=regulations)
 

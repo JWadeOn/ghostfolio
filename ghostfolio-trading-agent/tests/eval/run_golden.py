@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Golden Set Evaluator for Portfolio Intelligence Agent.
 
-Runs curated test cases and reports pass/fail results across four dimensions:
+Runs curated test cases and reports pass/fail results across seven dimensions:
   1. Tool selection   — did the agent call the right tools?
-  2. Source citation   — did the response cite the right data source?
-  3. Content           — does the response contain expected information?
-  4. Negative          — no hallucination, no give-up phrases?
+  2. Tool execution   — did every tool call succeed (no tool_errors)?
+  3. Source citation   — did the response cite the right data source?
+  4. Content           — does the response contain expected information?
+  5. Negative          — no hallucination, no give-up phrases?
+  6. Ground truth      — do known mock-data values appear in the response?
+  7. Structural        — react_step count and latency within budget?
 
 Usage:
     python3 tests/eval/run_golden.py
@@ -53,6 +56,15 @@ def run_test_case(case: dict, agent_graph, case_idx: int) -> dict:
     case_id = case.get("id", f"gs-{case_idx:03d}")
 
     eval_result = run_single_eval(case, agent_graph, case_id=case_idx, use_mocks=True)
+
+    # Extract react_step from the eval result (number of ReAct loop iterations)
+    response = eval_result.get("response") or {}
+    observability = response.get("observability") or {}
+    node_latencies = eval_result.get("node_latencies") or observability.get("node_latencies") or {}
+    # Count react_agent_N keys to determine step count
+    react_steps = sum(1 for k in node_latencies if k.startswith("react_agent_"))
+    eval_result["react_step"] = react_steps
+
     checks = run_golden_checks(case, eval_result)
 
     return {
@@ -62,6 +74,8 @@ def run_test_case(case: dict, agent_graph, case_idx: int) -> dict:
         "passed": checks["passed"],
         "checks": checks,
         "tools_called": eval_result.get("tools_called", []),
+        "tool_errors": eval_result.get("tool_errors", []),
+        "react_steps": react_steps,
         "latency_seconds": eval_result.get("latency_seconds"),
     }
 
@@ -97,8 +111,9 @@ def run_golden_set(
             print(f"       {status} {'PASS' if result['passed'] else 'FAIL'}")
 
             if verbose and not result["passed"]:
-                for dim in ("tool_selection", "source_citation", "content", "negative"):
-                    err = result["checks"][dim].get("error", "")
+                for dim in ("tool_selection", "tool_execution", "source_citation", "content", "negative", "ground_truth", "structural"):
+                    dim_data = result["checks"].get(dim, {})
+                    err = dim_data.get("error", "")
                     if err:
                         print(f"         - {dim}: {err}")
 
@@ -119,22 +134,32 @@ def print_summary(results: list[dict]) -> bool:
     print("GOLDEN SET RESULTS")
     print(f"{'=' * 60}\n")
 
+    dim_labels = {
+        "tool_selection": "Tools",
+        "tool_execution": "ToolExec",
+        "source_citation": "Sources",
+        "content": "Content",
+        "negative": "Negative",
+        "ground_truth": "GroundTruth",
+        "structural": "Structural",
+    }
+
     for r in results:
         status = "✓" if r["passed"] else "✗"
-        print(f"{status} {r['id']}: {r['input'][:50]}...")
+        steps_str = f" [{r.get('react_steps', '?')} steps]" if r.get("react_steps") is not None else ""
+        print(f"{status} {r['id']}: {r['input'][:50]}...{steps_str}")
 
         checks = r["checks"]
         dims = []
-        for dim in ("tool_selection", "source_citation", "content", "negative"):
-            dim_result = checks[dim]
-            label = dim.replace("_", " ").title().replace("Tool Selection", "Tools").replace("Source Citation", "Sources")
-            mark = "✓" if dim_result["passed"] else "✗"
+        for dim, label in dim_labels.items():
+            dim_result = checks.get(dim, {})
+            mark = "✓" if dim_result.get("passed", True) else "✗"
             dims.append(f"{label}: {mark}")
         print(f"    {' | '.join(dims)}")
 
         if not r["passed"]:
-            for dim in ("tool_selection", "source_citation", "content", "negative"):
-                err = checks[dim].get("error", "")
+            for dim in dim_labels:
+                err = checks.get(dim, {}).get("error", "")
                 if err:
                     print(f"    ERROR: {err}")
 
@@ -155,12 +180,26 @@ def write_report(results: list[dict], reports_dir: Path) -> Path:
     """Write a timestamped JSON report. Each run creates a new file."""
     passed = sum(1 for r in results if r["passed"])
     total = len(results)
+    latencies = [r["latency_seconds"] for r in results if r.get("latency_seconds") is not None]
+    # Tool success: among cases that called tools, fraction with no tool_errors (PRD target >95%)
+    cases_with_tools = [r for r in results if r.get("tools_called")]
+    tool_success_count = sum(
+        1 for r in cases_with_tools
+        if r.get("checks", {}).get("tool_execution", {}).get("passed", True)
+    )
+    tool_success_rate_pct = (
+        round(100 * tool_success_count / len(cases_with_tools), 1) if cases_with_tools else 100.0
+    )
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     payload = {
         "timestamp": timestamp,
         "total": total,
         "passed": passed,
+        "pass_rate_pct": round(100 * passed / total, 1) if total else 0,
         "all_passed": passed == total,
+        "tool_success_rate_pct": tool_success_rate_pct,
+        "cases_with_tools": len(cases_with_tools),
+        "avg_latency_seconds": round(sum(latencies) / len(latencies), 2) if latencies else None,
         "cases": results,
     }
     reports_dir.mkdir(parents=True, exist_ok=True)

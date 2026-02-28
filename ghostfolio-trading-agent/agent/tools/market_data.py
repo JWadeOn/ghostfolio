@@ -214,6 +214,10 @@ def _compute_indicators(df: pd.DataFrame) -> list[dict[str, Any]]:
     # Avoid singular/ill-conditioned data that can trigger SIGFPE in BLAS/LAPACK
     if len(df) < 2:
         return []
+    # Sanitize: replace inf so rolling/ewm don't feed BLAS with invalid values
+    df = df.replace([np.inf, -np.inf], np.nan).dropna(how="all")
+    if df.empty or len(df) < 2:
+        return []
     # Ensure chronological order (oldest first) so warmup NaNs are in early rows
     # and the last record (used as "latest" by formatter) has valid RSI/SMA.
     df = df.sort_index(ascending=True).copy()
@@ -239,11 +243,13 @@ def _compute_indicators(df: pd.DataFrame) -> list[dict[str, Any]]:
     vol_sma_20 = _compute_sma(volume, 20)
     relative_volume = volume / vol_sma_20.replace(0, np.nan)
 
-    # 52-week high/low distances
+    # 52-week high/low distances (guard division by zero to avoid SIGFPE / inf)
     rolling_252_high = high.rolling(window=252, min_periods=1).max()
     rolling_252_low = low.rolling(window=252, min_periods=1).min()
-    dist_52w_high = ((close - rolling_252_high) / rolling_252_high * 100)
-    dist_52w_low = ((close - rolling_252_low) / rolling_252_low * 100)
+    denom_high = rolling_252_high.replace(0, np.nan)
+    denom_low = rolling_252_low.replace(0, np.nan)
+    dist_52w_high = ((close - rolling_252_high) / denom_high * 100)
+    dist_52w_low = ((close - rolling_252_low) / denom_low * 100)
 
     records = []
     for i, date in enumerate(df.index):
