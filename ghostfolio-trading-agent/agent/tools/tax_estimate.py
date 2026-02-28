@@ -1,4 +1,7 @@
-"""Tool: tax_estimate — estimate US federal income tax from income and deductions."""
+"""Tool: tax_estimate — estimate US federal income tax from income and deductions.
+
+Use when: "tax bill", "estimate taxes", "tax implications", "tax liability", "taxable income", "tax rate", "tax calculation", "tax planning", "tax-loss harvesting", "tax-efficient portfolio", "tax-efficient investment", "tax-efficient trading", "tax-efficient retirement", "tax-efficient savings", "tax-efficient estate planning", "tax-efficient retirement planning", "tax-efficient estate planning", "tax-efficient retirement planning", "tax-efficient estate planning", "tax-efficient retirement planning".
+"""
 
 from __future__ import annotations
 

@@ -74,7 +74,11 @@ def _cache_key(symbols: list[str], period: str, interval: str) -> tuple:
 def _fetch_with_retry(
     symbols: list[str], period: str, interval: str, max_retries: int = 3
 ) -> dict[str, pd.DataFrame]:
-    """Fetch OHLCV data from yfinance with batch download and fallback to per-symbol retry."""
+    """Fetch OHLCV data from yfinance with batch download and fallback to per-symbol retry.
+    Note: yfinance/numpy may use BLAS/LAPACK; singular or empty data can rarely trigger
+    SIGFPE (EXC_ARITHMETIC) in OpenBLAS during matrix ops. Callers should handle empty
+    DataFrames and avoid passing degenerate data to downstream numeric code.
+    """
     results: dict[str, pd.DataFrame] = {}
 
     if not symbols:
@@ -84,7 +88,10 @@ def _fetch_with_retry(
     try:
         if len(symbols) == 1:
             df = yf.download(symbols[0], period=period, interval=interval, progress=False, threads=True)
-            if not df.empty:
+            if df is not None and not df.empty:
+                # yfinance can return a Series for a single row; ensure DataFrame
+                if isinstance(df, pd.Series):
+                    df = df.to_frame().T
                 results[symbols[0]] = df
             else:
                 results[symbols[0]] = pd.DataFrame()
@@ -199,8 +206,14 @@ def _compute_atr(
     return true_range.rolling(window=period).mean()
 
 
-def _compute_indicators(df: pd.DataFrame) -> dict[str, Any]:
+def _compute_indicators(df: pd.DataFrame) -> list[dict[str, Any]]:
     """Compute all technical indicators and return list of dated records."""
+    # Guard: no rows -> avoid any iloc[-1] or index errors downstream
+    if df.empty or len(df) == 0:
+        return []
+    # Avoid singular/ill-conditioned data that can trigger SIGFPE in BLAS/LAPACK
+    if len(df) < 2:
+        return []
     # Ensure chronological order (oldest first) so warmup NaNs are in early rows
     # and the last record (used as "latest" by formatter) has valid RSI/SMA.
     df = df.sort_index(ascending=True).copy()
@@ -291,7 +304,10 @@ def get_latest_prices(symbols: list[str]) -> dict[str, float]:
         df = raw.get(symbol, pd.DataFrame())
         if df.empty or "Close" not in df.columns:
             continue
-        last_close = df["Close"].iloc[-1]
+        close_series = df["Close"]
+        if close_series.empty or len(close_series) == 0:
+            continue
+        last_close = close_series.iloc[-1]
         p = _safe_float(last_close)
         if p is not None and p > 0:
             result[symbol] = p
@@ -329,17 +345,24 @@ def get_market_data(
                 logger.info(f"Cache hit for {symbols}")
                 return cached_result
 
-    raw_data = _fetch_with_retry(symbols, period, interval)
+    try:
+        raw_data = _fetch_with_retry(symbols, period, interval)
+    except (IndexError, Exception) as e:
+        logger.error(f"Fetch failed for {symbols}: {e}")
+        return {s: {"error": f"Fetch failed: {str(e)}"} for s in symbols}
 
     # For intraday quote request (1d/1h), fall back to daily bars if a symbol has no intraday data
     if period == "1d" and interval == "1h":
         empty_symbols = [s for s in symbols if raw_data.get(s) is not None and raw_data[s].empty]
         if empty_symbols:
             logger.info(f"Intraday empty for {empty_symbols}, falling back to 5d/1d")
-            fallback = _fetch_with_retry(empty_symbols, "5d", "1d")
-            for s in empty_symbols:
-                if s in fallback and not fallback[s].empty:
-                    raw_data[s] = fallback[s]
+            try:
+                fallback = _fetch_with_retry(empty_symbols, "5d", "1d")
+                for s in empty_symbols:
+                    if s in fallback and not fallback[s].empty:
+                        raw_data[s] = fallback[s]
+            except (IndexError, Exception) as e:
+                logger.warning(f"Fallback fetch failed: {e}")
 
     result: dict[str, Any] = {}
     for symbol in symbols:
@@ -349,6 +372,9 @@ def get_market_data(
             continue
         try:
             result[symbol] = _compute_indicators(df)
+        except IndexError as e:
+            logger.error(f"Indicator index error for {symbol}: {e}")
+            result[symbol] = {"error": f"Indicator computation failed: {str(e)}"}
         except Exception as e:
             logger.error(f"Indicator computation failed for {symbol}: {e}")
             result[symbol] = {"error": f"Indicator computation failed: {str(e)}"}

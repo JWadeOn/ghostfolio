@@ -1,13 +1,16 @@
-"""Tool: compliance_check — regulatory and tax law compliance checks.
+"""Tool: compliance_check — apply tax and regulatory rules to portfolio positions and trades.
 
-This is NOT a portfolio risk tool. Portfolio guardrails (position limits,
-concentration, pattern day trader, min notional) are handled by
-portfolio_guardrails_check and trade_guardrails_check.
+Use when: "wash sale", "trigger wash sale", "could selling X cause a wash sale",
+"if I sold today", "would this trigger", "capital gains", "short-term vs long-term",
+"tax-loss harvesting", "compliance issues", "complete review".
 
-compliance_check answers: "Does this transaction comply with the requested
-regulations (wash sale, capital gains classification, tax-loss harvesting)?"
+ALWAYS call this tool for compliance questions — do not answer from get_trade_history
+or get_portfolio_snapshot alone. Those tools retrieve data; this tool applies
+the rules to it.
+
+This is NOT for checking position limits, concentration, and sizing. These are handled
+by portfolio_guardrails_check and trade_guardrails_check.
 """
-
 from __future__ import annotations
 
 import logging

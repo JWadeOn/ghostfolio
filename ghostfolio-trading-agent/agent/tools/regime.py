@@ -106,7 +106,10 @@ def _classify_volatility(spy_data: list[dict], vix_data: list[dict]) -> dict[str
 
 
 def _classify_correlation(sector_data: dict[str, list[dict]]) -> dict[str, Any]:
-    """Compute average pairwise 20-day correlation between sector ETFs."""
+    """Compute average pairwise 20-day correlation between sector ETFs.
+    Uses explicit pairwise correlation to avoid pandas/numpy code paths that
+    may call linalg.inv on singular data and trigger SIGFPE in OpenBLAS/LAPACK.
+    """
     # Build a DataFrame of closes
     closes = {}
     for symbol, records in sector_data.items():
@@ -127,17 +130,39 @@ def _classify_correlation(sector_data: dict[str, list[dict]]) -> dict[str, Any]:
         if returns.empty:
             return {"classification": "unknown", "details": {}}
 
-        # Drop constant columns to avoid singular matrix / SIGFPE in correlation
+        # Drop constant columns to avoid singular matrix / SIGFPE
         const_cols = returns.columns[returns.std() <= 0].tolist()
         if const_cols:
             returns = returns.drop(columns=const_cols)
         if returns.shape[1] < 2:
             return {"classification": "unknown", "details": {}}
 
-        corr_matrix = returns.corr()
-        # Average of upper triangle (excluding diagonal)
-        mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
-        avg_corr = corr_matrix.where(mask).stack().mean()
+        # Compute average pairwise correlation without using .corr() (which can
+        # trigger linalg.inv in some pandas/numpy paths on ill-conditioned data).
+        arr = returns.values.astype(np.float64)
+        n, k = arr.shape
+        if n < 2 or k < 2:
+            return {"classification": "unknown", "details": {}}
+        means = np.nanmean(arr, axis=0)
+        centered = arr - means
+        stds = np.nanstd(arr, axis=0)
+        valid = stds > 1e-12
+        if np.sum(valid) < 2:
+            return {"classification": "unknown", "details": {}}
+        centered = centered[:, valid]
+        stds = stds[valid]
+        k = centered.shape[1]
+        count = 0
+        total_corr = 0.0
+        for i in range(k):
+            for j in range(i + 1, k):
+                c = np.dot(centered[:, i], centered[:, j]) / (n - 1)
+                if stds[i] > 1e-12 and stds[j] > 1e-12:
+                    r = c / (stds[i] * stds[j])
+                    if -1.1 <= r <= 1.1:
+                        total_corr += r
+                        count += 1
+        avg_corr = (total_corr / count) if count else 0.0
 
         if avg_corr > 0.75:
             classification = "high_correlation"

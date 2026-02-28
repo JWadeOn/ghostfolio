@@ -30,14 +30,13 @@ def get_market_data(
     bypass_cache: bool = False,
 ) -> dict:
     """Fetch price history and market context for one or more ticker symbols. Returns OHLCV data and key indicators.
-
-    Use when you need current prices, historical performance, or market context for investment decisions.
-
+    Use for: current prices, historical performance, price before a hypothetical trade.
+    NOT for: portfolio concentration, risk limits, or trade approval — use guardrails tools for those.
     Args:
         symbols: List of ticker symbols, e.g. ["AAPL", "MSFT"].
-        period: Time period — e.g. "1d", "5d", "1mo", "3mo", "6mo", "1y", "60d". Use "1d" with interval "1h" for current prices.
+        period: Time period — e.g. "1d", "5d", "1mo", "3mo", "6mo", "1y", "60d". Use "1d" with interval="1h" for current price.
         interval: Data interval — "1d" for daily, "1h" for hourly.
-        bypass_cache: Set True when you need the freshest data (e.g. current price quotes).
+        bypass_cache: Set True when freshest data is required (e.g. live price quotes).
     """
     return _get_market_data(symbols, period=period, interval=interval, bypass_cache=bypass_cache)
 
@@ -81,10 +80,12 @@ def scan_strategies(
 
 @tool
 def portfolio_guardrails_check() -> dict:
-    """Assess portfolio-level risk: position concentration, sector concentration, cash buffer, diversification.
-
-    Use when the user asks about portfolio risk, health check, or whether they are within their limits.
-    No symbol or trade amount needed — this checks the portfolio itself.
+    """Assess portfolio-level risk without reference to any specific trade.
+    Checks: position concentration, sector concentration, cash buffer, diversification score.
+    Use when: "concentrated?", "diversified?", "sector exposure?", "over-concentrated?",
+    "would buying X over-concentrate", "portfolio health", "are my positions within limits?".
+    No symbol or amount needed — evaluates the portfolio as it currently stands.
+    NOT for: evaluating a specific proposed buy or sell — use trade_guardrails_check for that.
     """
     return _portfolio_guardrails_check()
 
@@ -96,16 +97,16 @@ def trade_guardrails_check(
     position_size_pct: Optional[float] = None,
     dollar_amount: Optional[float] = None,
 ) -> dict:
-    """Evaluate whether a proposed buy or sell fits portfolio risk guidelines.
-
-    For buys: checks position size (max 5%), sector concentration (max 30%), cash availability.
-    Returns violations, warnings, and suggested position size.
-    For sells: evaluates reasons to sell/hold, P&L, hold period, and portfolio impact after sale.
-
+    """Evaluate whether a specific proposed buy or sell fits portfolio risk guidelines.
+    Use when: user wants to buy or sell a named symbol and needs approval or sizing guidance.
+    NOT for: general concentration questions without a concrete trade — use portfolio_guardrails_check for those.
+    For buys: checks position size limit (max 5%), sector concentration (max 30%), cash availability.
+    For sells: evaluates P&L, hold period, portfolio impact after sale.
+    Returns: violations, warnings, and suggested position size.
     Args:
         symbol: Ticker symbol to evaluate (e.g. "AAPL").
         side: "buy" to evaluate adding a position, "sell" to evaluate reducing/exiting.
-        position_size_pct: Proposed position as percentage of portfolio (alternative to dollar_amount).
+        position_size_pct: Proposed position as % of portfolio (alternative to dollar_amount).
         dollar_amount: Proposed dollar amount (alternative to position_size_pct).
     """
     return _trade_guardrails_check(
@@ -240,7 +241,7 @@ def tax_estimate(
 def compliance_check(transaction: dict, regulations: list[str]) -> dict:
     """Check a transaction against regulatory and tax rules (e.g. wash_sale, capital_gains, tax_loss_harvesting).
 
-    For portfolio-level risk limits use portfolio_guardrails_check or trade_guardrails_check.
+    Use when: "wash sale", "trigger wash sale", "wash sale rules", "tax-loss harvesting", "short-term vs long-term", "holding period", "compliance issues", "complete review". For portfolio-level risk limits use portfolio_guardrails_check or trade_guardrails_check.
 
     Args:
         transaction: Order-like dict with type, symbol, quantity, unitPrice, date.
