@@ -1,6 +1,8 @@
 # Ghostfolio Trading Agent
 
-An AI-powered trading intelligence agent built with [LangGraph](https://github.com/langchain-ai/langgraph) and [Anthropic Claude](https://www.anthropic.com/). It integrates with [Ghostfolio](https://ghostfol.io) to provide regime-aware market analysis, opportunity scanning, risk validation, and portfolio review through a conversational REST API.
+An AI-powered **portfolio intelligence assistant** built with [LangGraph](https://github.com/langchain-ai/langgraph) and [Anthropic Claude](https://www.anthropic.com/). It integrates with [Ghostfolio](https://ghostfol.io) to help long-term investors and traders with portfolio health, performance review, risk validation, tax implications, compliance (e.g. wash sale), and market data — through a conversational REST API.
+
+**Focus:** Portfolio intelligence first: holdings, diversification, trade evaluation, taxes, and compliance. Regime-aware analysis and opportunity scanning are supported as extensions.
 
 ## Table of Contents
 
@@ -83,8 +85,10 @@ uvicorn agent.app:app --host 0.0.0.0 --port 8000
 ```bash
 curl -X POST http://localhost:8000/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "What is the current market regime?"}'
+  -d '{"message": "Show me my portfolio"}'
 ```
+
+Or ask about risk, taxes, or performance: _"Can I buy $10,000 of TSLA?"_, _"How have my investments performed this year?"_, _"Do I have any wash sale issues?"_
 
 ### Running without Docker
 
@@ -185,129 +189,150 @@ If you don’t see Trading Assistant, confirm you’re logged in and that your u
 
 ## Use Cases
 
-### 1. Market Regime Check
+### 1. Portfolio health and overview
 
-Understand the current market environment across five dimensions: trend, volatility, breadth, correlation, and sector rotation.
+See holdings, allocation, and concentration at a glance.
+
+```
+"Show me my portfolio"
+"Am I too concentrated in any single stock?"
+"How is my portfolio diversified across sectors?"
+```
+
+**What you get:** Total value, cash, positions, allocation %, and guardrail results (concentration, sector limits, cash buffer). All numbers from Ghostfolio and portfolio guardrails.
+
+---
+
+### 2. Trade evaluation (buy/sell)
+
+Check whether a proposed trade fits your risk limits and get context on the position.
+
+```
+"Can I buy $10,000 of TSLA?"
+"Should I sell GOOG?"
+"Should I add more to my NVDA position?"
+```
+
+**What you get:** Pass/fail vs position size, sector concentration, and cash; unrealized P&L and portfolio impact for sells. Uses portfolio snapshot, market data, and trade guardrails.
+
+---
+
+### 3. Performance review
+
+Review how your investments have performed over time.
+
+```
+"How have my investments performed in the last 90 days?"
+"What are my best and worst performing positions?"
+"Show me my recurring dividend income and investment patterns"
+```
+
+**What you get:** P&L, win rate, best/worst positions, and transaction categorization (dividends, DCA, etc.) from trade history and portfolio data.
+
+---
+
+### 4. Tax and compliance
+
+Estimate taxes and check for wash sale and other compliance issues.
+
+```
+"Estimate taxes on $80,000 income with $15,000 deductions filing single"
+"Could any of my current positions trigger a wash sale if I sold them today?"
+"If I sell AAPL to buy MSFT, what are the tax implications?"
+```
+
+**What you get:** Tax estimates (US federal brackets), wash sale and capital gains analysis, and compliance check results. Uses tax_estimate, compliance_check, and trade history.
+
+---
+
+### 5. Price and symbol lookup
+
+Get current prices and resolve symbols.
+
+```
+"What's AAPL trading at?"
+"What's the ticker symbol for Apple?"
+```
+
+**What you get:** Live price (and optional indicators) or symbol resolution from market data and Ghostfolio lookup.
+
+---
+
+### 6. Record and watchlist
+
+Record transactions and manage watchlists.
+
+```
+"Record a buy of 10 shares of AAPL at $150 per share on 2025-02-26 in USD"
+"Add AAPL to my watchlist"
+```
+
+**What you get:** Confirmation of the recorded activity or watchlist update.
+
+---
+
+### 7. Market regime and opportunity scan (Phase 2 style)
+
+Understand market environment and scan for setups (when regime/scan tools are in scope).
 
 ```
 "What's the current market regime?"
-"Is this a risk-on or risk-off environment?"
+"Scan my watchlist for setups"
 ```
 
-**What you get:** A composite regime label (e.g. `bullish_expansion`, `quiet_consolidation`) with a confidence score and a breakdown of each dimension, plus guidance on which strategies are favored.
+**What you get:** Regime label and dimensions, or ranked opportunities with entry/stop/target. Filtered by regime when applicable.
 
 ---
 
-### 2. Opportunity Scan
+### 8. General and safety
 
-Scan a watchlist or the default mega-cap universe for trade setups that align with current market conditions.
-
-```
-"Scan for opportunities"
-"Any momentum setups in AAPL, MSFT, NVDA?"
-"What VCP breakouts are forming?"
-```
-
-**What you get:** A ranked list of opportunities with entry price, stop loss, target, risk/reward ratio, and key signals. Results are filtered by regime alignment so you only see setups that fit the current environment.
-
----
-
-### 3. Risk Validation
-
-Check whether a proposed trade fits within your portfolio's risk limits before entering.
-
-```
-"Can I buy $10k of TSLA?"
-"Check risk for a long position in NVDA at 3% of portfolio"
-```
-
-**What you get:** Pass/fail against five risk rules — position size (max 5%), sector concentration (max 30%), correlation with existing holdings, existing exposure, and cash availability — with a suggested adjusted size if limits are breached.
-
----
-
-### 4. Chart Validation
-
-Verify your technical analysis against live data.
-
-```
-"Is support at $320 on TSLA valid?"
-"Confirm the breakout on AAPL above $190"
-```
-
-**What you get:** Confirmation or challenge of your levels backed by current price action, moving averages, Bollinger Bands, and recent volume.
-
----
-
-### 5. Trade Journal Analysis
-
-Review your trading performance over a given period.
-
-```
-"How have my trades performed in the last 90 days?"
-"Show my win rate this year"
-```
-
-**What you get:** Closed trade P&L, win rate, average win/loss, profit factor, average hold time, and open position unrealized P&L.
-
----
-
-### 6. Signal Archaeology
-
-Investigate what technical signals preceded a major price move.
-
-```
-"What predicted the AAPL drop last quarter?"
-"What indicators were present before NVDA's rally?"
-```
-
-**What you get:** A retrospective analysis of the indicators and regime context leading up to the move, helping you recognize similar setups in the future.
-
----
-
-### 7. General Questions
-
-Ask anything trading-related and the agent will respond conversationally.
+Greetings, scope questions, and adversarial handling.
 
 ```
 "What strategies do you support?"
-"How does the momentum strategy work?"
+"Guarantee me 50% returns"  → Refusal + disclaimer
 ```
+
+**What you get:** Help text or a brief refusal with "This is not financial advice."
 
 ---
 
 ## Architecture
 
-The agent uses a six-node LangGraph pipeline:
+The agent uses a **standard ReAct loop** with 1–2 LLM calls per request (no separate intent or synthesis LLM). Pipeline:
 
 ```
 User Message
      |
      v
-[1. Classify Intent]  — LLM determines intent + extracts parameters
+[1. Check Context]     — Code only. Promotes or clears cached regime/portfolio (TTL: 30m / 5m).
      |
      v
-[2. Check Context]    — Decides which tools to call; uses cached data when fresh
+[2. ReAct Agent]       — LLM (default: Claude Haiku). Chooses tools and produces final answer.
+     |                      Either: tool_calls → execute_tools, or final text → verify.
+     v
+[3. Execute Tools]     — Code only. Runs tools in parallel; injects prior results to avoid redundant calls.
+     |
+     +-----------------> (loop back to ReAct Agent with tool results)
+     |
+     v (when agent returns final answer, no more tools)
+[4. Verify]            — Code only. Fact-check, confidence, guardrails, intent-aware checks.
+     |                  Intent is inferred from tools_called (no LLM).
+     v
+[5. Format Output]     — Code only. Structured JSON: summary, confidence, intent, data, citations, warnings.
      |
      v
-[3. Execute Tools]    — Runs tools (market data, regime, scanner, risk, etc.)
-     |
-     v
-[4. Synthesize]       — LLM generates a trader-facing narrative from tool results
-     |
-     v
-[5. Verify]           — Fact-checks numbers, computes confidence, enforces guardrails
-     |
-     v
-[6. Format Output]    — Returns structured JSON with citations, warnings, confidence
+Response
 ```
 
-Key design decisions:
+**Design highlights:**
 
-- **LLM is used only for intent classification and synthesis** — verification is deterministic code for speed and auditability
-- **Regime-aligned scanning** filters strategies to reduce false positives
-- **Fact-checking** matches numbers in the narrative against tool data with a 5% tolerance
-- **Guardrails** block guarantee language and require stop loss/target for any trade suggestion
-- **Caching** reduces redundant API calls (regime: 30 min TTL, portfolio: 5 min TTL)
+- **1–2 LLM calls:** 0-tool queries = 1 call; tooled queries = 2 calls (first: tool selection + execution, second: final answer from results). No separate classify-intent or synthesize nodes.
+- **Intent** is inferred after the run from `tools_called` (code-only mapping in the formatter) for verification and response metadata.
+- **Verification** is deterministic (fact-check numbers, confidence score, guardrails, domain checks). On failure, warnings are appended to the response; no re-synthesis.
+- **Caching:** Regime 30 min TTL, portfolio 5 min TTL. `execute_tools` writes back cache when `detect_regime` or `get_portfolio_snapshot` run.
+
+For a detailed flow (state shapes, routes, code vs LLM per step), see [docs/ARCHITECTURE_POST_LATENCY_OVERHAUL.md](docs/ARCHITECTURE_POST_LATENCY_OVERHAUL.md).
 
 ---
 
@@ -340,17 +365,23 @@ Targets tight consolidation near highs with declining volume — classic breakou
 
 ## Tools
 
-| Tool                       | Description                                                                                                                                                                                                                                       |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **get_market_data**        | Fetches OHLCV data and computes 20+ technical indicators (RSI, MACD, SMAs, EMAs, Bollinger Bands, ATR, relative volume, 52-week position)                                                                                                         |
-| **detect_regime**          | Classifies the market across 5 dimensions using SPY, VIX, and 9 sector ETFs                                                                                                                                                                       |
-| **scan_strategies**        | Runs all strategies against a symbol universe, filtered by current regime                                                                                                                                                                         |
-| **get_portfolio_snapshot** | Retrieves holdings, performance, and account data from Ghostfolio                                                                                                                                                                                 |
-| **check_risk**             | Validates a proposed **buy** (position size, sector, correlation, cash). For **sell** questions, runs sell-specific logic: concentration and lack of cash are reasons _to_ sell; returns position P&L, reasons_to_sell, and portfolio-after-sale. |
-| **get_trade_history**      | Pulls order history from Ghostfolio and computes P&L, win rate, and other aggregate stats                                                                                                                                                         |
-| **lookup_symbol**          | Searches Ghostfolio for symbols by name or ticker                                                                                                                                                                                                 |
+| Tool                           | Description                                                                                           |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| **get_portfolio_snapshot**     | Holdings, cash, allocation, performance from Ghostfolio                                               |
+| **portfolio_guardrails_check** | Portfolio health: concentration, sector limits, cash buffer, diversification                          |
+| **trade_guardrails_check**     | Trade validation: position size, cash, sector concentration; buy vs sell logic (reasons to sell, P&L) |
+| **get_trade_history**          | Order history, P&L, win rate, aggregates from Ghostfolio                                              |
+| **get_market_data**            | OHLCV and technical indicators (RSI, SMAs, etc.) for symbols                                          |
+| **tax_estimate**               | US federal tax estimation (income, deductions, filing status, brackets)                               |
+| **compliance_check**           | Wash sale (IRC §1091), capital gains, tax-loss harvesting; uses trade history                         |
+| **transaction_categorize**     | Categorize orders, detect patterns: DCA, dividends, fees                                              |
+| **lookup_symbol**              | Resolve ticker from company name (e.g. Apple → AAPL) via Ghostfolio                                   |
+| **create_activity**            | Record a buy/sell (and other activity types) in Ghostfolio                                            |
+| **add_to_watchlist**           | Add a symbol to the user's watchlist                                                                  |
+| **detect_regime**              | 5-dimension market classification (Phase 2 / regime-focused flows)                                    |
+| **scan_strategies**            | Strategy scanning: momentum, mean reversion, VCP (Phase 2)                                            |
 
-**Risk check: buy vs sell** — Buy (e.g. "Can I add $10k TSLA?") uses pass/fail vs limits. Sell (e.g. "Should I sell GOOG?") treats concentration and no cash as reasons _to_ sell; response includes unrealized P&L and portfolio impact, with no "FAIL" verdict for concentration. _MVP gap:_ Tax implications and formal exit-timing rules are not yet modeled.
+**Risk: buy vs sell** — For _buy_ questions (e.g. "Can I add $10k TSLA?") the agent uses pass/fail vs limits. For _sell_ questions it evaluates concentration and cash as reasons _to_ sell when relevant and returns position P&L and portfolio impact without a blanket "FAIL" for concentration.
 
 ---
 
@@ -387,16 +418,17 @@ Shortcut for opportunity scanning. Accepts optional `strategy`, `symbols`, and `
 
 All configuration is managed through environment variables (or a `.env` file). See `.env.example` for the full list.
 
-| Variable                  | Required | Default                    | Description                  |
-| ------------------------- | -------- | -------------------------- | ---------------------------- |
-| `ANTHROPIC_API_KEY`       | Yes      | —                          | Anthropic API key for Claude |
-| `GHOSTFOLIO_ACCESS_TOKEN` | Yes      | —                          | Ghostfolio API token         |
-| `GHOSTFOLIO_API_URL`      | No       | `http://localhost:3333`    | Ghostfolio base URL          |
-| `AGENT_PORT`              | No       | `8000`                     | Port for the agent API       |
-| `CACHE_TTL_SECONDS`       | No       | `300`                      | Default cache TTL (seconds)  |
-| `LANGCHAIN_TRACING_V2`    | No       | `false`                    | Enable LangSmith tracing     |
-| `LANGCHAIN_API_KEY`       | No       | —                          | LangSmith API key            |
-| `LANGCHAIN_PROJECT`       | No       | `ghostfolio-trading-agent` | LangSmith project name       |
+| Variable                  | Required | Default                    | Description                                             |
+| ------------------------- | -------- | -------------------------- | ------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`       | Yes      | —                          | Anthropic API key for Claude                            |
+| `GHOSTFOLIO_ACCESS_TOKEN` | Yes      | —                          | Ghostfolio API token                                    |
+| `GHOSTFOLIO_API_URL`      | No       | `http://localhost:3333`    | Ghostfolio base URL                                     |
+| `AGENT_MODEL`             | No       | `claude-haiku-4-5`         | Claude model (e.g. Haiku for speed, Sonnet for quality) |
+| `AGENT_PORT`              | No       | `8000`                     | Port for the agent API                                  |
+| `CACHE_TTL_SECONDS`       | No       | `300`                      | Default cache TTL (seconds)                             |
+| `LANGCHAIN_TRACING_V2`    | No       | `false`                    | Enable LangSmith tracing                                |
+| `LANGCHAIN_API_KEY`       | No       | —                          | LangSmith API key                                       |
+| `LANGCHAIN_PROJECT`       | No       | `ghostfolio-trading-agent` | LangSmith project name                                  |
 
 **Getting the Ghostfolio access token:** Use your **security token** (the one from **Settings → Account** in Ghostfolio). Put it in `ghostfolio-trading-agent/.env` as `GHOSTFOLIO_ACCESS_TOKEN=<your-security-token>`. The agent automatically exchanges this for a JWT when calling portfolio/account endpoints, so you do **not** need to paste a JWT.
 
@@ -439,7 +471,7 @@ The agent is evaluated with a **scored eval suite** that runs natural-language t
 
 ### Scoring details
 
-- **Intent** (weight 0.20) — Classified intent matches the expected category.
+- **Intent** (weight 0.20) — Inferred from `tools_called` (code-only); effectively measures tool selection accuracy vs expected intent.
 - **Tools** (weight 0.25) — Expected tools called; no tool execution errors.
 - **Content** (weight 0.15) — Required phrases present; ground-truth values present when specified.
 - **Safety** (weight 0.15) — No prohibited language; guardrails reflected.
@@ -450,29 +482,13 @@ A case **passes** if overall score >= 0.8, there are no errors, and latency is w
 
 ### Dataset
 
-Eval cases live in **`tests/eval/dataset.py`** in a LangSmith-compatible format. The suite includes **23 cases** across categories:
+Eval cases live in **`tests/eval/dataset.py`** in a LangSmith-compatible format. The suite includes **69+ cases** across categories (Phase 1 long-term investor focus; Phase 2 regime/scan). Categories include: `risk_check`, `portfolio_overview`, `portfolio_health`, `performance_review`, `tax_implications`, `compliance`, `price_quote`, `lookup_symbol`, `create_activity`, `add_to_watchlist`, `transaction_categorize`, `edge_invalid`, `edge_ambiguous`, `adversarial`, `multi_step`, and Phase 2 `regime_check`, `opportunity_scan`.
 
-| Category             | Description / examples                                                  |
-| -------------------- | ----------------------------------------------------------------------- |
-| `regime_check`       | Market regime, VIX, sector rotation                                     |
-| `opportunity_scan`   | Watchlist scan, momentum setups                                         |
-| `risk_check`         | "Can I buy $10k TSLA?", "Should I sell GOOG?"                           |
-| `general`            | Greetings, guarantee refusals, disclaimers                              |
-| `chart_validation`   | Support/resistance validation                                           |
-| `journal_analysis`   | Trade performance, win rate                                             |
-| `signal_archaeology` | What predicted a past move                                              |
-| `portfolio_overview` | Show portfolio, holdings                                                |
-| `price_quote`        | "What's AAPL trading at?" (exact_tools, ground_truth_contains)          |
-| `lookup_symbol`      | "Ticker for Apple", "Look up Tesla" (exact_tools: `lookup_symbol` only) |
-| `create_activity`    | "Record a buy of 10 AAPL…", "Log a sell…"                               |
-| `edge_invalid`       | Empty input, gibberish — must not crash or hallucinate                  |
-| `edge_ambiguous`     | "Sell", "Should I?" — must not execute trades                           |
-
-To add or change cases, edit `tests/eval/dataset.py`. Each case can specify `expected_intent`, `expected_tools`, `expected_output_contains`, `should_contain`, `should_not_contain`, `exact_tools`, `ground_truth_contains`, and `category`.
+To add or change cases, edit `tests/eval/dataset.py`. Each case can specify `expected_intent`, `expected_tools`, `expected_output_contains`, `should_contain`, `should_not_contain`, `exact_tools`, `ground_truth_contains`, and `category`. **Intent** in results is derived from `infer_intent_from_tools(tools_called)` (no LLM classification).
 
 ### Golden set (baseline correctness)
 
-The **golden set** is a curated set of 15 cases that act as a first line of defense. They are fast, deterministic, and binary — if any golden case fails, something is fundamentally broken. Run them after every commit.
+The **golden set** is a curated set of **25 cases** that act as a first line of defense: 11 happy path (one per major tool), 5 edge, 5 adversarial, 4 multi-step (+ 1 single-tool compliance). They are fast, deterministic, and binary — if any golden case fails, something is fundamentally broken. Run them after every commit.
 
 Golden checks use four dimensions (all code-based, no LLM scoring):
 
@@ -501,7 +517,16 @@ Optionally write a JSON report for CI:
 python3 tests/eval/run_golden.py --report reports/golden-results.json
 ```
 
-Exit code 0 = all 15 pass; 1 = at least one failure. Cases live in `tests/eval/golden_cases.py`; check logic in `tests/eval/golden_checks.py`.
+Exit code 0 = all 25 pass; 1 = at least one failure. Cases live in `tests/eval/golden_cases.py`; check logic in `tests/eval/golden_checks.py`.
+
+### Labeled scenarios
+
+**Labeled scenarios** (`tests/eval/scenarios.py` + `run_scenarios.py`) organize cases by **category** (single_tool, multi_tool, no_tool), **subcategory** (e.g. portfolio, market_data, adversarial), and **difficulty**. Run a subset for coverage mapping:
+
+```bash
+python3 tests/eval/run_scenarios.py --category single_tool
+python3 tests/eval/run_scenarios.py --subcategory portfolio
+```
 
 ### How to run evals
 
@@ -571,12 +596,7 @@ For **Railway**: add both env vars in the Railway dashboard. For **local develop
 
 ### Reports and regression
 
-- **JSON report:** Each run writes **`reports/eval-results-{timestamp}.json`** (e.g. `eval-results-20260226T183143Z.json`). It includes:
-  - **Run metadata** — timestamp, total cases, pass threshold, max latency seconds.
-  - **Aggregate** — total passed, pass rate %, average overall score, breakdown **by category**.
-  - **Per-case** — id, category, input snippet, passed, overall score, scores per dimension (including `verification`), latency_seconds, latency_passed, verification_passed, tool_errors, agent confidence, errors, tools called.
-  - **Consistency** (if `EVAL_CONSISTENCY_RUNS` >= 2) — per-case: consistency_passed, consistency_errors, num_runs.
-  - **Regression** — if the pass rate dropped by more than 5% compared to the previous run, `regression_delta_pct` is set and a **REGRESSION WARNING** is printed to stdout.
+- **JSON report:** Each run writes **`reports/eval-results-{timestamp}.json`**. It includes run metadata, **aggregate** (pass rate, avg score, **tool_success_rate_pct**, **hallucination_rate_pct**, **verification_accuracy_pct**, breakdown by category), per-case results, optional consistency block, and regression vs previous run.
 
 Historical reports are kept; each run creates a new timestamped file.
 
@@ -604,21 +624,18 @@ Every request produces a structured trace log (`observability.trace_log`) record
 
 Per-node timing is captured in `observability.node_latencies`:
 
-- `classify_intent` — intent classification LLM call
-- `react_agent_N` — each ReAct LLM step
-- `execute_tools_N` — tool dispatch (plus `tool_{name}_N` per tool)
-- `synthesize_N` — synthesis LLM call
-- `verify_N` — verification (code-only, no LLM)
+- `react_agent_0`, `react_agent_1`, … — each ReAct LLM step
+- `execute_tools_0`, `execute_tools_1`, … — tool dispatch (plus `tool_{name}_N` per tool)
+- `verify_0` — verification (code-only)
+- `format_output` — formatter (code-only)
 - `total_latency_seconds` — full request wall time (set by the API layer)
 
 ### Token usage
 
 Input/output token counts and estimated cost are tracked per LLM call in `observability.token_usage`:
 
-- `classify_intent` — intent LLM call
-- `react_agent_N` — each ReAct step
-- `synthesize_N` — synthesis call
-- `total` — aggregate with `input_tokens`, `output_tokens`, `total_tokens`, `estimated_cost_usd`
+- `react_agent_0`, `react_agent_1`, … — each ReAct step
+- `total` — aggregate with `input_tokens`, `output_tokens`, `total_tokens`, `estimated_cost_usd` (per-model pricing, e.g. Haiku vs Sonnet)
 
 ### Error tracking
 
@@ -767,7 +784,3 @@ Hard gate. All items required to pass:
 ## Disclaimer
 
 This agent is for informational and educational purposes only. It does not provide financial advice, and its outputs should not be interpreted as buy/sell recommendations. Always do your own research and consult a qualified financial advisor before making trading decisions.
-
-## BONUS
-
-add a tool that fetches 'political' movers

@@ -3,15 +3,15 @@
 _Where We Are, Where We Are Going, How We Get There_
 _AgentForge Week 2 · Deadline: Sunday 10:59 PM CT_
 
-| Tools Built | Tests Passing | Current Pass Rate | Deployment     |
-| ----------- | ------------- | ----------------- | -------------- |
-| 13 Tools    | 56 Tests      | TBD → 80%+ target | Railway ✓ Live |
+| Focus                  | Architecture                  | Eval / Quality                     | Deployment     |
+| ---------------------- | ----------------------------- | ---------------------------------- | -------------- |
+| Portfolio intelligence | Standard ReAct, 1–2 LLM calls | 25 golden + scenarios + full suite | Railway ✓ Live |
 
 ---
 
 ## 1. Vision: Where We Are Going
 
-The Ghostfolio Trading Intelligence Agent transforms a passive portfolio tracker into an active AI-powered decision-support system. This is a **brownfield integration** — extending an existing open-source wealth management platform with conversational AI capabilities.
+The Ghostfolio Trading Intelligence Agent is a **portfolio intelligence assistant** that turns a passive portfolio tracker into an active AI-powered decision-support system. This is a **brownfield integration** — extending an existing open-source wealth management platform with conversational AI.
 
 ### 1.1 The Problem
 
@@ -70,20 +70,23 @@ Two services deployed on Railway, integrated with the forked Ghostfolio reposito
 
 ### 2.2 The Agent Pipeline
 
-Every natural language query flows through a 6-node LangGraph pipeline:
+Every natural language query flows through a **standard ReAct** LangGraph pipeline (no separate classify-intent or synthesize nodes). **1–2 LLM calls** per request.
 
-| #   | Node                | What It Does                                                                   | Type  | LLM?  |
-| --- | ------------------- | ------------------------------------------------------------------------------ | ----- | ----- |
-| 01  | **Classify Intent** | Understands what the user is asking; extracts symbol, amount, side             | Entry | ✓ Yes |
-| 02  | **Check Context**   | Cache freshness check; preloads regime/portfolio if cached                     | Prep  | No    |
-| 03  | **ReAct Loop**      | LLM reasons between tool calls; decides which tool next based on prior results | Core  | ✓ Yes |
-| 04  | **Execute Tools**   | Deterministic tool execution; no LLM involvement                               | Core  | No    |
-| 05  | **Verify**          | Fact-checks numbers, confidence scoring, guardrail enforcement                 | Gate  | No    |
-| 06  | **Format Output**   | Structured JSON with citations, warnings, confidence, tools_used               | Exit  | No    |
+| #   | Node              | What It Does                                                                 | Type | LLM?  |
+| --- | ----------------- | ---------------------------------------------------------------------------- | ---- | ----- |
+| 01  | **Check Context** | Cache freshness; preloads regime/portfolio when within TTL (30m / 5m)        | Prep | No    |
+| 02  | **ReAct Agent**   | LLM reasons and acts: chooses tools or returns final answer in one step      | Core | ✓ Yes |
+| 03  | **Execute Tools** | Deterministic tool execution (parallel where possible); writes cache back    | Core | No    |
+| 04  | **Verify**        | Fact-check, confidence, guardrails; intent inferred from `tools_called`      | Gate | No    |
+| 05  | **Format Output** | Structured JSON with citations, warnings, confidence, intent (code-inferred) | Exit | No    |
 
-> **Key design:** Claude is called exactly twice per request — intent classification and synthesis only. All tool execution is deterministic Python.
+**Flow:** `check_context` → `react_agent` → (if tool_calls) → `execute_tools` → `react_agent` (with results) → … → when agent returns final text → `verify` → `format_output` → END.
 
-### 2.3 Tool Registry — 13 Tools Across 3 Levels
+> **Key design:** Claude is called **1–2 times** per request (react only). Intent is **inferred from tools_called** after the run (code-only mapping in formatter/verification). No separate intent-classification or synthesis LLM. See `docs/ARCHITECTURE_POST_LATENCY_OVERHAUL.md` for detailed flow and state shapes.
+
+### 2.3 Tool Registry — 13+ Tools Across 3 Levels
+
+(Unchanged structure; includes `add_to_watchlist` and decomposed guardrails. See README Tools table for full list.)
 
 #### Level 1: Deterministic (Ghostfolio API wrappers)
 
@@ -115,13 +118,15 @@ Every natural language query flows through a 6-node LangGraph pipeline:
 
 ### 2.4 Eval Performance History
 
-| Run                          | Cases   | Pass Rate | Avg Score | Key Change                                        |
-| ---------------------------- | ------- | --------- | --------- | ------------------------------------------------- |
-| Baseline (190639Z)           | 19      | 47.4%     | 0.840     | Initial framework                                 |
-| Tool decomposition (204957Z) | 19      | 42.1%     | 0.811     | check_risk split; sectors bug introduced          |
-| New tools added (212851Z)    | 23      | 26.1%     | 0.777     | +4 cases; sectors crash exposed                   |
-| P0-P3 fixes (231954Z)        | 23      | 65.2%     | 0.858     | Bug fixed, verification relaxed, prompts improved |
-| **Target (next run)**        | **23+** | **80%+**  | **0.88+** | Tool ordering + final assertion fixes             |
+| Run / Milestone           | Cases   | Pass Rate | Notes                                              |
+| ------------------------- | ------- | --------- | -------------------------------------------------- |
+| Baseline (190639Z)        | 19      | 47.4%     | Initial framework                                  |
+| Tool decomposition        | 19      | 42.1%     | check_risk split                                   |
+| New tools added           | 23      | 26.1%     | +4 cases; sectors crash exposed                    |
+| P0–P3 fixes (231954Z)     | 23      | 65.2%     | Bug fixes, verification relaxed, prompts improved  |
+| **Latency overhaul**      | —       | —         | Standard ReAct (1–2 LLM calls), code-only intent   |
+| **Golden set (25 cases)** | 25      | ~76%+     | 11 happy path, 5 edge, 5 adversarial, 4 multi-step |
+| **Target**                | **25+** | **80%+**  | Golden + full suite; aggregate metrics in reports  |
 
 ### 2.5 Brownfield Integration — What We Extended
 
@@ -156,15 +161,15 @@ Every natural language query flows through a 6-node LangGraph pipeline:
 
 ### 3.2 Core Agent Architecture
 
-| Component                      | Implementation                                                | Status  |
-| ------------------------------ | ------------------------------------------------------------- | ------- |
-| Reasoning Engine               | Claude Sonnet, structured output, ReAct chain-of-thought      | ✅ Done |
-| Tool Registry                  | 13 tools with schemas, descriptions, execution logic          | ✅ Done |
-| Memory System (hot)            | LangGraph checkpointer — conversation history within session  | ✅ Done |
-| **Memory System (persistent)** | **Redis 24hr TTL + Postgres cold storage**                    | 🔴 Todo |
-| Orchestrator                   | ReAct node with `llm.bind_tools()`, multi-step reasoning loop | ✅ Done |
-| Verification Layer             | `verification.py` — fact-check, confidence, domain checks     | ✅ Done |
-| Output Formatter               | Structured JSON: summary, confidence, citations, warnings     | ✅ Done |
+| Component                      | Implementation                                                               | Status  |
+| ------------------------------ | ---------------------------------------------------------------------------- | ------- |
+| Reasoning Engine               | Claude (default Haiku), ReAct with bind_tools; 1–2 LLM calls per request     | ✅ Done |
+| Tool Registry                  | 13+ tools with schemas, descriptions, execution logic                        | ✅ Done |
+| Memory System (hot)            | LangGraph checkpointer — conversation history within session                 | ✅ Done |
+| **Memory System (persistent)** | **Redis 24hr TTL + Postgres cold storage**                                   | 🔴 Todo |
+| Orchestrator                   | Standard ReAct loop: react_agent ↔ execute_tools → verify → format_output    | ✅ Done |
+| Verification Layer             | `verification.py` — fact-check, confidence, intent from tools_called         | ✅ Done |
+| Output Formatter               | Structured JSON: summary, confidence, intent (inferred), citations, warnings | ✅ Done |
 
 ### 3.3 Required Tools — Finance Track (PRD Minimum 5)
 
@@ -178,20 +183,19 @@ Every natural language query flows through a 6-node LangGraph pipeline:
 
 ### 3.4 Evaluation Framework
 
-| Requirement                            | Status         | Notes                                   |
-| -------------------------------------- | -------------- | --------------------------------------- |
-| Eval runner with per-case scoring      | ✅ Done        | `run_evals.py` with 5-dimension scoring |
-| Per-case JSON storage with timestamps  | ✅ Done        | `reports/eval-results-{timestamp}.json` |
-| Regression detection                   | ✅ Done        | Flags >5% drop vs previous run          |
-| LangSmith Datasets + Experiments       | 🟡 In Progress | Wiring tonight                          |
-| Mock layer for deterministic testing   | ✅ Done        | `tests/mocks/` — Ghostfolio + yfinance  |
-| **50+ test cases**                     | 🔴 Todo        | Currently at 23; expanding Friday       |
-| 20+ happy path scenarios               | 🔴 Todo        | Currently ~12                           |
-| 10+ edge cases                         | 🔴 Todo        | Currently 4                             |
-| 10+ adversarial inputs                 | 🔴 Todo        | Currently 1                             |
-| 10+ multi-step reasoning               | 🔴 Todo        | Currently 3                             |
-| ≥80% pass rate confirmed stable        | 🟡 In Progress | At 65%; targeting 80%+                  |
-| Integration smoke test vs live Railway | 🔴 Todo        | Run after stable mock evals             |
+| Requirement                            | Status         | Notes                                                                    |
+| -------------------------------------- | -------------- | ------------------------------------------------------------------------ |
+| Eval runner with per-case scoring      | ✅ Done        | `run_evals.py`; intent from `infer_intent_from_tools`                    |
+| Per-case JSON storage with timestamps  | ✅ Done        | `reports/eval-results-{timestamp}.json`                                  |
+| Regression detection                   | ✅ Done        | Flags >5% drop vs previous run                                           |
+| Aggregate metrics in reports           | ✅ Done        | tool_success_rate_pct, hallucination_rate_pct, verification_accuracy_pct |
+| Golden set (25 cases)                  | ✅ Done        | `golden_cases.py`; run via `run_golden.py`                               |
+| Labeled scenarios                      | ✅ Done        | `scenarios.py` + `run_scenarios.py`                                      |
+| Mock layer for deterministic testing   | ✅ Done        | `tests/mocks/` — Ghostfolio + yfinance                                   |
+| Full suite (69+ cases)                 | ✅ Done        | `dataset.py`; Phase 1 + Phase 2                                          |
+| ≥80% pass rate (golden / suite)        | 🟡 In Progress | Golden ~76%; target 80%+                                                 |
+| LangSmith Datasets + Experiments       | 🟡 Optional    | Experiment URL when LANGCHAIN_API_KEY set                                |
+| Integration smoke test vs live Railway | 🔴 Todo        | Run after stable mock evals                                              |
 
 ### 3.5 Observability
 
@@ -219,16 +223,16 @@ Every natural language query flows through a 6-node LangGraph pipeline:
 
 ### 3.7 Performance Targets
 
-| Metric                | PRD Target  | Current                     | Status         |
-| --------------------- | ----------- | --------------------------- | -------------- |
-| Single-tool latency   | <5 seconds  | 3-5s (real) / 11-15s (mock) | 🟡 Partial     |
-| Multi-step latency    | <15 seconds | 45-80s observed             | 🔴 Gap         |
-| Tool success rate     | >95%        | Not yet measured            | 🔴 Unmeasured  |
-| Eval pass rate        | >80%        | 65.2% → targeting 80%+      | 🟡 In Progress |
-| Hallucination rate    | <5%         | Not yet measured            | 🔴 Unmeasured  |
-| Verification accuracy | >90%        | Not yet measured            | 🔴 Unmeasured  |
+| Metric                | PRD Target  | Current (post–latency overhaul)     | Status         |
+| --------------------- | ----------- | ----------------------------------- | -------------- |
+| Single-tool latency   | <5 seconds  | 2–4s (Haiku + ReAct, 1–2 LLM calls) | ✅ Met         |
+| Multi-step latency    | <15 seconds | 3–8s (parallel tools, 2 LLM calls)  | ✅ Met         |
+| Tool success rate     | >95%        | Reported in eval aggregate          | ✅ Measured    |
+| Eval pass rate        | >80%        | Golden ~76%; full suite variable    | 🟡 In Progress |
+| Hallucination rate    | <5%         | Reported in eval aggregate          | ✅ Measured    |
+| Verification accuracy | >90%        | Reported in eval aggregate          | ✅ Measured    |
 
-> **Note:** Multi-step latency is a known gap — flagged for post-submission optimization. Single-tool latency on real data meets the target.
+**Note:** Latency overhaul (standard ReAct, no classify/synthesize nodes, default Haiku) brought single-tool and multi-step within targets. Per-model token cost and node latencies are tracked in observability.
 
 ### 3.8 Submission Deliverables
 
@@ -312,63 +316,66 @@ Fix anything broken. Submit before noon if not already done.
 
 ### Critical — Must Fix Before Submission
 
-| #   | Issue                                                | Fix                                                | Owner        |
-| --- | ---------------------------------------------------- | -------------------------------------------------- | ------------ |
-| 1   | Mock eval pass rate not yet confirmed stable at 80%+ | Run 3 consecutive times; fix remaining assertions  | You + Cursor |
-| 2   | LangSmith Datasets and Experiments not wired         | Wire tonight using evaluate() + replay approach    | Cursor       |
-| 3   | Session management not persistent                    | AsyncRedisSaver (24hr) + AsyncPostgresSaver (cold) | Cursor       |
-| 4   | Eval suite only at 23 cases (need 50+)               | Expand Friday morning using coverage matrix above  | Cursor       |
-| 5   | Integration smoke test not run                       | Run against live Railway after stable mock evals   | You          |
+| #   | Issue                                   | Fix                                              | Owner        |
+| --- | --------------------------------------- | ------------------------------------------------ | ------------ |
+| 1   | Golden pass rate not yet stable at 80%+ | Run repeatedly; fix tool-selection / content     | You + Cursor |
+| 2   | Integration smoke test not run          | Run against live Railway after stable mock evals | You          |
+
+### Addressed (Latency Overhaul)
+
+| Item                                    | Status                                                                 |
+| --------------------------------------- | ---------------------------------------------------------------------- |
+| Standard ReAct pipeline (1–2 LLM calls) | ✅ Done — no classify_intent or synthesize nodes                       |
+| Code-only intent inference              | ✅ Done — `infer_intent_from_tools()` in formatter/verification        |
+| Node latency tracking                   | ✅ Fixed — manual timing in react_agent and tools                      |
+| Aggregate eval metrics                  | ✅ Done — tool_success_rate, hallucination_rate, verification_accuracy |
+| Configurable model (AGENT_MODEL)        | ✅ Done — default Haiku                                                |
+| Golden set 25 cases + labeled scenarios | ✅ Done                                                                |
 
 ### Known Gaps — Documented, Not Blocking
 
-| Gap                                          | Impact                                        | Plan                               |
-| -------------------------------------------- | --------------------------------------------- | ---------------------------------- |
-| Multi-step latency 45-80s (PRD target <15s)  | Performance metric not met                    | Post-submission optimization       |
-| Sell evaluation logic applies buy-side rules | Occasional contradictory sell recommendations | Phase 2 fix                        |
-| Regime detection unstable                    | Excluded from Phase 1 evals                   | Phase 2 stabilization              |
-| Multi-user auth (single demo token)          | All users share one portfolio                 | Phase 2 per-request token passing  |
-| Output validation schema checks              | Verification requirement partially met        | Saturday if time allows            |
-| Human-in-the-loop escalation                 | Verification requirement partially met        | Phase 2                            |
-| Tool success rate not measured               | Performance metric unmeasured                 | Extract from LangSmith traces      |
-| Hallucination rate not measured              | Performance metric unmeasured                 | Compute from verification warnings |
+| Gap                                 | Impact                                        | Plan                              |
+| ----------------------------------- | --------------------------------------------- | --------------------------------- |
+| Sell evaluation edge cases          | Occasional contradictory sell recommendations | Phase 2 fix                       |
+| Regime detection unstable           | Excluded from Phase 1 evals                   | Phase 2 stabilization             |
+| Multi-user auth (single demo token) | All users share one portfolio                 | Phase 2 per-request token passing |
+| Output validation schema checks     | Verification requirement partially met        | Phase 2                           |
+| Human-in-the-loop escalation        | Verification requirement partially met        | Phase 2                           |
 
 ### Phase 2 Backlog (Post-Sunday)
 
-- ReAct pattern refinement — smarter adaptive tool selection
-- Structured outputs with Pydantic validation at every LLM boundary
+- ReAct prompt refinement — more consistent tool selection (e.g. compliance_check, tax_estimate on multi-area queries)
+- Structured outputs with Pydantic validation at LLM boundary
 - Streaming responses — show agent working in real time
 - Active trader use cases — technical analysis, strategy scanning, regime-aware responses
 - Confidence-weighted synthesis language
 - Multi-turn context building a trade thesis across turns
-- Regime-aware responses — filter every answer through current market context
+- Regime-aware responses — filter answers through current market context
 
 ---
 
 ## 7. AI Cost Analysis
 
-_To be completed Saturday using actual LangSmith token data._
+_Update with actual LangSmith token data when available._
 
-### Assumptions
+### Assumptions (post–latency overhaul)
 
-- 5 queries/user/day
-- ~2,000 input tokens + 800 output tokens per query
-- 2 LLM calls per request (intent + synthesis)
-- Claude Sonnet pricing: $3/M input tokens, $15/M output tokens
+- ~5 queries/user/day
+- ~2,000 input + ~800 output tokens per query (varies by tooled vs 0-tool)
+- **1–2 LLM calls per request** (ReAct only; no separate intent or synthesis)
+- Default model: **Claude Haiku** (e.g. `claude-haiku-4-5`) — lower cost than Sonnet; override with `AGENT_MODEL=claude-sonnet-4-20250514` for maximum quality
+- Per-model pricing in `observability.py` (Haiku vs Sonnet)
 
-### Production Cost Projections
+### Production Cost Projections (illustrative)
 
-| Cost Component     | 100 Users  | 1,000 Users | 10,000 Users | 100,000 Users |
-| ------------------ | ---------- | ----------- | ------------ | ------------- |
-| Queries / month    | 15,000     | 150,000     | 1,500,000    | 15,000,000    |
-| Input tokens (M)   | 0.03M      | 0.30M       | 3.0M         | 30M           |
-| Output tokens (M)  | 0.012M     | 0.12M       | 1.2M         | 12M           |
-| Claude input cost  | $0.09      | $0.90       | $9.00        | $90           |
-| Claude output cost | $0.18      | $1.80       | $18.00       | $180          |
-| Railway infra      | $5         | $20         | $100         | $500          |
-| **TOTAL / MONTH**  | **~$5.30** | **~$22.70** | **~$127**    | **~$770**     |
+| Cost Component    | 100 Users | 1,000 Users | 10,000 Users |
+| ----------------- | --------- | ----------- | ------------ |
+| Queries / month   | 15,000    | 150,000     | 1,500,000    |
+| LLM calls/request | 1–2       | 1–2         | 1–2          |
+| Claude (Haiku)    | ~$5–15    | ~$50–150    | ~$500–1.5k   |
+| Railway infra     | $5        | $20         | $100         |
 
-> **Cost is extremely low** due to the 2-LLM-call architecture. All tool execution is deterministic Python — no LLM costs for market data, portfolio fetching, risk rules, or verification. Fill in actual token counts from LangSmith on Saturday.
+Cost stays low due to 1–2 LLM calls and deterministic tool/verification path. Fill in actual token counts from LangSmith when available.
 
 ---
 
@@ -383,11 +390,10 @@ Use this as the final review before submitting Saturday noon.
 
 ### Eval Framework
 
-- [ ] Mock evals stable at ≥80% (3 consecutive runs)
-- [ ] LangSmith Datasets + Experiments wired and visible
-- [ ] 50+ test cases (Phase 1 scope)
+- [ ] Golden set stable at ≥80% (25 cases)
+- [ ] Full suite / labeled scenarios run and pass rate documented
 - [ ] Integration smoke test vs live Railway passing
-- [ ] Eval pass rate ≥80% confirmed
+- [ ] LangSmith experiments optional when API key set
 
 ### Session Management
 
