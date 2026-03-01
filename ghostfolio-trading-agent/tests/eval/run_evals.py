@@ -455,7 +455,7 @@ def run_consistency_check(
     """Run a subset of eval cases multiple times and compare outputs for determinism."""
     from agent.graph import agent_graph
 
-    CONSISTENCY_CATEGORIES = {"regime_check", "price_quote", "general", "portfolio_overview"}
+    CONSISTENCY_CATEGORIES = {"risk_check", "portfolio_health", "performance_review", "compliance", "tax_implications"}
     subset = [c for c in eval_cases if c.get("category") in CONSISTENCY_CATEGORIES][:5]
 
     if not subset:

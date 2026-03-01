@@ -455,125 +455,159 @@ Tests cover market data fetching, regime detection, strategy scanning, and risk 
 
 ## Evaluation System
 
-The agent is evaluated with a **scored eval suite** that runs natural-language test cases through the full graph, checks intent, tool usage, content, and safety, and writes timestamped reports. Evals use **mocks by default** so you can run them without a live Ghostfolio instance or yfinance network calls.
+The eval suite has **111 test cases** across three layers. Each layer answers a different question, and you should run them at different times. All layers use **mocks by default** — no live Ghostfolio or yfinance needed (Anthropic API key is still required for the LLM).
 
-### What gets evaluated — production requirements matrix
+### When to run what
 
-| Requirement        | Eval dimension                                      | How it is tested                                                                                                                                                                                                                                                                           |
-| ------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Correctness**    | Content + Verification + Ground Truth               | `expected_output_contains`, `should_contain` check key phrases. `verification` score (weight 0.10) uses the verification node to fact-check numbers against `tool_results`. Optional `ground_truth_contains` asserts known mock values (e.g. AAPL mock close price) appear in the summary. |
-| **Tool Selection** | Tools (weight 0.25)                                 | `expected_tools` per case; `exact_tools: true` disallows extras. Scored by `_score_tools`.                                                                                                                                                                                                 |
-| **Tool Execution** | Tool Execution (folds into Tools score)             | After each run, `tool_results` is inspected. If any tool returned `{"error": ...}`, the tools score is set to 0 and the case fails.                                                                                                                                                        |
-| **Safety**         | Safety (weight 0.15)                                | `should_not_contain` blocks forbidden language (e.g. "guarantee", "will return"). `should_contain` requires disclaimers (e.g. "not financial advice"). Verification score penalises hallucinated numbers.                                                                                  |
-| **Consistency**    | Consistency check (optional)                        | Set `EVAL_CONSISTENCY_RUNS=2` (or higher) to run a subset of cases multiple times and compare intent + tools_called across runs. Set `EVAL_MODE=1` to force `temperature=0` in synthesis for deterministic output. Results are written to the report under `"consistency"`.                |
-| **Edge Cases**     | Dataset categories `edge_invalid`, `edge_ambiguous` | Empty input, gibberish, and ambiguous queries (e.g. "Sell", "Should I?") are tested. Expected: no crash, no unsolicited trade execution, no hallucination.                                                                                                                                 |
-| **Latency**        | Latency enforcement                                 | `MAX_LATENCY_SECONDS` (default 120, overridable via `EVAL_MAX_LATENCY_SECONDS`). Cases exceeding the limit fail with an error. `latency_passed` is reported per case.                                                                                                                      |
+| Situation                                  | What to run           | Command                                   |
+| ------------------------------------------ | --------------------- | ----------------------------------------- |
+| After every code change                    | Golden set (34 cases) | `python3 tests/eval/run_golden.py`        |
+| Before a PR / after adding new query types | Scenarios (47 cases)  | `python3 tests/eval/run_scenarios.py`     |
+| Full regression check / CI gate            | Dataset (30 cases)    | `python3 tests/eval/run_evals.py`         |
+| After any change, quick sanity check       | Unit tests            | `pytest tests/ -q`                        |
+| Pre-push / full MVP gate                   | All of the above      | `python3 scripts/run_mvp_requirements.py` |
 
-### Scoring details
+### Three eval layers
 
-- **Intent** (weight 0.20) — Inferred from `tools_called` (code-only); effectively measures tool selection accuracy vs expected intent.
-- **Tools** (weight 0.25) — Expected tools called; no tool execution errors.
-- **Content** (weight 0.15) — Required phrases present; ground-truth values present when specified.
-- **Safety** (weight 0.15) — No prohibited language; guardrails reflected.
-- **Confidence** (weight 0.15) — Agent's own confidence score (0–100), normalised to 0–1.
-- **Verification** (weight 0.10) — Numbers in synthesis match `tool_results`; 0 if verification node failed.
+```
+Golden Set  (34 cases) ─── "Does it work?"              Binary pass/fail, run after every commit.
+Scenarios   (47 cases) ─── "Does it work for all types?" Coverage map, some failure OK.
+Dataset     (30 cases) ─── "How well does it work?"      Weighted scoring + regression tracking.
+```
 
-A case **passes** if overall score >= 0.8, there are no errors, and latency is within bounds.
+All three layers run each query through the full agent graph (LLM + tools + verification + formatting) and check the output. The difference is what they check and how strict they are.
 
-### Tool success rate (PRD target >95%)
+### Layer 1: Golden set — regression gate
 
-**Definition:** Among eval cases where the agent called at least one tool, the fraction where **every** tool returned without an error (no `{"error": "..."}` in `tool_results`).
-
-**Status:** Measured in every full eval run. Recent runs vary (e.g. 73–100%); meeting the 95% target depends on tool stability and mock/live data.
-
-**How it's measured:**
-
-- **Full eval:** For each case, `run_evals.py` inspects `result["tool_results"]`. If any tool returns a dict with an `"error"` key, that case is counted as a tool failure. The aggregate **tool_success_rate_pct** = 100 × (cases with tools and no tool_errors) / (cases that called any tool). It is written to `reports/eval-results-{timestamp}.json` under `aggregate.tool_success_rate_pct` and `run_metadata.tool_success_target_met`.
-- **Golden set:** Each golden case now has a **tool_execution** check: if the case called tools, it passes only when `tool_errors` is empty. The golden report includes **tool_success_rate_pct** (same definition over golden cases that use tools) in the JSON when you run `python3 tests/eval/run_golden.py --report`.
-
-**How to prove it:**
-
-1. **Full suite:** Run `python3 tests/eval/run_evals.py`. The script prints `Tool success rate: X% (target ≥95%)` and `Tool success target met (≥95%): yes/no`. Exit code is **0** only if both pass-rate and tool-success targets are met (and no regression). So a successful run proves tool success ≥95% for that run.
-2. **Golden set:** Run `python3 tests/eval/run_golden.py --report` and open the latest `reports/golden-results-{timestamp}.json`: check `tool_success_rate_pct` and that all cases with `tools_called` have `checks.tool_execution.passed: true`.
-3. **CI:** Use the full eval as a gate: `python3 tests/eval/run_evals.py` exiting 0 implies tool success target met.
-
-### Dataset
-
-Eval cases live in **`tests/eval/dataset.py`** in a LangSmith-compatible format. The suite includes **69+ cases** across categories (Phase 1 long-term investor focus; Phase 2 regime/scan). Categories include: `risk_check`, `portfolio_overview`, `portfolio_health`, `performance_review`, `tax_implications`, `compliance`, `price_quote`, `lookup_symbol`, `create_activity`, `add_to_watchlist`, `transaction_categorize`, `edge_invalid`, `edge_ambiguous`, `adversarial`, `multi_step`, and Phase 2 `regime_check`, `opportunity_scan`.
-
-To add or change cases, edit `tests/eval/dataset.py`. Each case can specify `expected_intent`, `expected_tools`, `expected_output_contains`, `should_contain`, `should_not_contain`, `exact_tools`, `ground_truth_contains`, and `category`. **Intent** in results is derived from `infer_intent_from_tools(tools_called)` (no LLM classification).
-
-### Golden set (baseline correctness)
-
-The **golden set** is a curated set of **25 cases** that act as a first line of defense: 11 happy path (one per major tool), 5 edge, 5 adversarial, 4 multi-step (+ 1 single-tool compliance). They are fast, deterministic, and binary — if any golden case fails, something is fundamentally broken. Run them after every commit.
-
-Golden checks use seven dimensions (all code-based, no LLM scoring):
-
-| Check                   | What it catches                                        |
-| ----------------------- | ------------------------------------------------------ |
-| **Tool selection**      | Agent called the wrong tool or missed a required one   |
-| **Tool execution**      | One or more tools returned an error (`{"error": ...}`) |
-| **Source citation**     | Agent cited the wrong data source in its response      |
-| **Content validation**  | Response is missing key facts or terms                 |
-| **Negative validation** | Agent hallucinated, gave up, or produced empty output  |
-| **Ground truth**        | Known mock values (e.g. prices) appear in the response |
-| **Structural**          | ReAct step count and latency within per-case limits    |
-
-**Run the golden set:**
+**34 cases** (17 happy path, 7 edge, 4 adversarial, 6 multi-step). Binary pass/fail across 7 check dimensions. If any golden case fails, something is fundamentally broken.
 
 ```bash
+# Run all golden cases
 python3 tests/eval/run_golden.py
+
+# Verbose output (shows error details on failure)
+python3 tests/eval/run_golden.py --verbose
+
+# Run a single case by ID
+python3 tests/eval/run_golden.py --id gs-001
+
+# Write a JSON report for CI
+python3 tests/eval/run_golden.py --report
+
+# Via pytest (one test per case, easy to see which failed)
+pytest tests/eval/test_golden.py -v
 ```
 
-Or via pytest (one test per case for easy failure diagnosis):
+The 7 check dimensions (all code-based, no LLM scoring):
+
+| Check               | What it catches                                 |
+| ------------------- | ----------------------------------------------- |
+| Tool selection      | Wrong tool called or required tool missing      |
+| Tool execution      | A tool returned `{"error": ...}`                |
+| Source citation     | Wrong data source cited in response             |
+| Content validation  | Key facts or terms missing from response        |
+| Negative validation | Hallucination, give-up phrases, or empty output |
+| Ground truth        | Known mock values (e.g. AAPL = $187.50) missing |
+| Structural          | ReAct steps or latency exceeded per-case budget |
+
+Cases: `tests/eval/golden_cases.py`. Check logic: `tests/eval/golden_checks.py`.
+
+### Layer 2: Scenarios — coverage map
+
+**47 cases** organized by category (single_tool, multi_tool, no_tool), subcategory, and difficulty tier. Use this to check coverage across query types. Some failure is expected — this is a map, not a gate.
 
 ```bash
-pytest tests/eval/test_golden.py -q
-```
+# Run all scenarios
+python3 tests/eval/run_scenarios.py
 
-Optionally write a JSON report for CI:
-
-```bash
-python3 tests/eval/run_golden.py --report reports/golden-results.json
-```
-
-Exit code 0 = all 25 pass; 1 = at least one failure. Cases live in `tests/eval/golden_cases.py`; check logic in `tests/eval/golden_checks.py`.
-
-### Labeled scenarios
-
-**Labeled scenarios** (`tests/eval/scenarios.py` + `run_scenarios.py`) organize cases by **category** (single_tool, multi_tool, no_tool), **subcategory** (e.g. portfolio, market_data, adversarial), and **difficulty**. Run a subset for coverage mapping:
-
-```bash
+# Filter by category, subcategory, or difficulty
 python3 tests/eval/run_scenarios.py --category single_tool
 python3 tests/eval/run_scenarios.py --subcategory portfolio
+python3 tests/eval/run_scenarios.py --difficulty moderate
+
+# Write a JSON report
+python3 tests/eval/run_scenarios.py --report
 ```
 
-### How to run evals
+Outputs a coverage matrix showing pass rates by category and difficulty tier.
 
-From the **`ghostfolio-trading-agent`** directory:
+Cases: `tests/eval/scenarios.py`.
+
+### Layer 3: Dataset — weighted scoring and regression tracking
+
+**30 cases** focused on intent classification and confidence scoring. All queries are unique from the golden and scenario sets. Every case has an explicit ID (e.g. `ds_risk_sell_goog`, `ds_adv_financegpt`).
+
+| Case type   | Count | Examples                                                       |
+| ----------- | ----- | -------------------------------------------------------------- |
+| happy_path  | 12    | sell GOOG, watchlist MSFT, wash sale check, capital gains TSLA |
+| edge_case   | 4     | "Should I buy?", "What is my portfolio worth?", greeting       |
+| adversarial | 7     | FinanceGPT bypass, hide from IRS, fake portfolio               |
+| multi_step  | 7     | portfolio health fix, tax loss harvesting, complete review     |
 
 ```bash
+# Run all 30 cases (mocked by default)
 python3 tests/eval/run_evals.py
+
+# Run against live Ghostfolio + yfinance (seed first — see below)
+EVAL_USE_MOCKS=0 python3 tests/eval/run_evals.py
+
+# Deterministic mode (temperature=0) with consistency checks
+EVAL_CONSISTENCY_RUNS=2 EVAL_MODE=1 python3 tests/eval/run_evals.py
+
+# Override latency threshold
+EVAL_MAX_LATENCY_SECONDS=90 python3 tests/eval/run_evals.py
 ```
 
-- **Mocks:** By default, Ghostfolio and yfinance are **mocked** (`tests/mocks/`). No real API or network calls are made; the agent still runs end-to-end with the LLM (Anthropic API key required).
-- **Live Ghostfolio / yfinance:** To run against real services, set:
-  ```bash
-  EVAL_USE_MOCKS=0 python3 tests/eval/run_evals.py
-  ```
-  To get **predictable portfolio data** on a deployed Ghostfolio instance (e.g. Railway), seed it first with the Phase 1 mock dataset — see [Seeding Ghostfolio for live evals](#seeding-ghostfolio-for-live-evals).
-- **Consistency mode:** Run a subset of cases multiple times to check determinism:
-  ```bash
-  EVAL_CONSISTENCY_RUNS=2 EVAL_MODE=1 python3 tests/eval/run_evals.py
-  ```
-  `EVAL_MODE=1` forces synthesis `temperature=0` for deterministic output.
-- **Latency threshold:** Override the default 120s max latency:
-  ```bash
-  EVAL_MAX_LATENCY_SECONDS=90 python3 tests/eval/run_evals.py
-  ```
-- **LangSmith:** If `LANGCHAIN_API_KEY` is set, the run is logged as an experiment (dataset `ghostfolio-trading-agent-evals`, experiment name `trading-agent-v1` by default). Set `EVAL_VERSION=2` (or another value) to change the version suffix.
+**Scoring:** Each case is scored across 6 weighted dimensions. A case passes when overall score >= 0.8 with no hard errors.
 
-The script prints pass/fail per case, overall pass rate, consistency results (if enabled), and the path of the written report.
+| Dimension    | Weight | What it measures                                   |
+| ------------ | ------ | -------------------------------------------------- |
+| Intent       | 20%    | Correct intent classification vs `expected_intent` |
+| Tools        | 25%    | Expected tools called, no execution errors         |
+| Content      | 15%    | Required phrases present in response               |
+| Safety       | 15%    | No forbidden language (e.g. "guarantee")           |
+| Confidence   | 15%    | Agent's self-reported confidence (0-100)           |
+| Verification | 10%    | Fact-check numbers match tool results              |
+
+**Reports:** Each run writes `reports/eval-results-{timestamp}.json` with aggregate stats (pass rate, tool success rate, hallucination rate, per-category breakdown) and per-case results. The runner automatically compares against the previous report and warns on regressions.
+
+**LangSmith integration:** If `LANGCHAIN_API_KEY` is set, results are logged as a LangSmith experiment. Set `EVAL_VERSION=2` to change the experiment version suffix.
+
+Cases: `tests/eval/dataset.py`. Runner: `tests/eval/run_evals.py`.
+
+### Tool success rate (target >95%)
+
+Measured across all eval layers. Among cases where the agent called at least one tool, the fraction where every tool returned without error. Reported in JSON reports as `tool_success_rate_pct`.
+
+```bash
+# Full suite prints: "Tool success rate: X% (target ≥95%)"
+python3 tests/eval/run_evals.py
+
+# Golden set includes tool_success_rate_pct in its JSON report
+python3 tests/eval/run_golden.py --report
+```
+
+Exit code 0 from `run_evals.py` means both pass rate (>=80%) and tool success (>=95%) targets are met with no regression.
+
+### Adding new eval cases
+
+To add a case, edit the appropriate file:
+
+- **Golden** (`golden_cases.py`): for baseline correctness. ID format: `gs-NNN`.
+- **Scenarios** (`scenarios.py`): for coverage. ID format: `sc-XX-NNN`.
+- **Dataset** (`dataset.py`): for intent/confidence testing. ID format: `ds_category_description`.
+
+See [docs/compliance/EVAL_SUITE_ARCHITECTURE.md](docs/compliance/EVAL_SUITE_ARCHITECTURE.md) for case templates and the full architecture diagram.
+
+### Mock layer
+
+When mocks are enabled (`EVAL_USE_MOCKS=1`, default):
+
+- **Ghostfolio** — `tests/mocks/ghostfolio_mock.py` provides fixed portfolio, accounts, orders, and symbol lookup.
+- **Market data** — `tests/mocks/market_data_mock.py` provides synthetic OHLCV with pinned prices (AAPL $187.50, TSLA $248.00, GOOG $142.00, etc.).
+- **Sector lookup** — stubbed so guardrails don't call yfinance.
+
+This keeps evals fast (~30-60s per layer) and repeatable without external services.
 
 ### Seeding Ghostfolio for live evals
 
@@ -593,42 +627,22 @@ For **Railway**: add both env vars in the Railway dashboard. For **local develop
 
 #### Seeding steps
 
-1. **Mock dataset:** `tests/eval/mock_dataset.json` defines the Phase 1 seed — 8 activities (BUY/SELL) across 5 symbols (AAPL, TSLA, GOOG, NVDA, MSFT). Expected net holdings after seeding: AAPL 600, TSLA 150, GOOG 500, NVDA 200, MSFT 150.
+1. **Mock dataset:** `tests/eval/mock_dataset.json` defines the seed — 8 activities (BUY/SELL) across 5 symbols (AAPL, TSLA, GOOG, NVDA, MSFT). Expected net holdings after seeding: AAPL 600, TSLA 150, GOOG 500, NVDA 200, MSFT 150.
 
 2. **Seed script:** From the `ghostfolio-trading-agent` directory:
 
    ```bash
-   # Use .env or set explicitly for your deployed instance
    GHOSTFOLIO_API_URL=https://your-ghostfolio.up.railway.app \
    GHOSTFOLIO_ACCESS_TOKEN=your-security-token \
    python3 scripts/seed_ghostfolio_for_evals.py
    ```
 
-   The script deletes existing orders for the authenticated user, then creates the seed activities. The token must have **createOrder** and **deleteOrder** permissions (default Ghostfolio user has these).
+   The script deletes existing orders, then creates the seed activities. Watch for "MANUAL fallback" messages — if you see them, fix FMP configuration and re-seed (MANUAL assets use UUID symbols that break ticker lookups).
 
-   **MANUAL fallback warning:** If FMP symbol validation fails (e.g. API key not set or `DATA_SOURCES` missing FMP), the script falls back to `dataSource: "MANUAL"`. Ghostfolio stores MANUAL assets with **UUID-based symbols** (e.g. `1d580260-...` instead of `AAPL`), which breaks ticker-based lookups in the agent (e.g. `trade_guardrails_check` reports "You do not hold AAPL"). Watch the script output for "MANUAL fallback" messages — if you see them, fix the FMP configuration and re-seed.
-
-3. **Run evals:** After seeding, run evals against the live instance:
+3. **Run evals:**
    ```bash
    EVAL_USE_MOCKS=0 python3 tests/eval/run_evals.py
    ```
-   Portfolio and order data will match the seed; market data and symbol lookup still hit live services (yfinance and Ghostfolio).
-
-### Reports and regression
-
-- **JSON report:** Each run writes **`reports/eval-results-{timestamp}.json`**. It includes run metadata, **aggregate** (pass rate, avg score, **tool_success_rate_pct**, **hallucination_rate_pct**, **verification_accuracy_pct**, breakdown by category), per-case results, optional consistency block, and regression vs previous run.
-
-Historical reports are kept; each run creates a new timestamped file.
-
-### Mock layer
-
-When mocks are enabled (`EVAL_USE_MOCKS=1`, default):
-
-- **Ghostfolio** — `tests/mocks/ghostfolio_mock.py` and `ghostfolio_responses.py` provide fixed portfolio, accounts, orders, symbol lookup (e.g. Apple→AAPL, Tesla→TSLA), and a successful create-order response.
-- **Market data** — `tests/mocks/market_data_mock.py` provides synthetic OHLCV DataFrames for AAPL, TSLA, GOOG, SPY, VIX, etc., so regime and indicator logic run without calling yfinance.
-- **Risk sector** — Sector lookup is stubbed so `check_risk` does not call yfinance.
-
-This keeps evals fast and repeatable without external services.
 
 ---
 
