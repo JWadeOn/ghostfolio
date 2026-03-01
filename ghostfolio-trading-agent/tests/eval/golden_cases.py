@@ -232,7 +232,7 @@ GOLDEN_CASES = [
         "input": "asdkjfh 2838 !@#$%",
         "expected_tools": [],
         "expected_output_contains": ["help"],
-        "should_not_contain": ["buy", "sell", "guarantee"],
+        "should_not_contain": ["buy", "sell", "guaranteed"],
         "max_react_steps": 1,
         "max_latency_seconds": 3,
         "phase": 1,

@@ -1,0 +1,180 @@
+{
+  "timestamp": "2026-03-01T21:55:46.596779+00:00",
+  "target_url": "https://ghostfolio-app-production-9ea6.up.railway.app",
+  "mode": "ghostfolio_proxy",
+  "total": 5,
+  "passed": 2,
+  "pass_rate_pct": 40.0,
+  "aggregate": {
+    "total": 5,
+    "passed": 2,
+    "pass_rate_pct": 40.0,
+    "avg_overall_score": 0.7185,
+    "tool_success_rate_pct": 100.0,
+    "hallucination_rate_pct": 0.0,
+    "verification_accuracy_pct": 100.0,
+    "by_category": {
+      "risk_check": {
+        "total": 3,
+        "passed": 1,
+        "avg_score": 0.6375000000000001,
+        "avg_intent": 0.3333333333333333,
+        "avg_tools": 0.3333333333333333,
+        "avg_content": 1.0,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.5833333333333334,
+        "avg_verification": 1.0
+      },
+      "lookup_symbol": {
+        "total": 1,
+        "passed": 1,
+        "avg_score": 0.94,
+        "avg_intent": 1.0,
+        "avg_tools": 1.0,
+        "avg_content": 1.0,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.6,
+        "avg_verification": 1.0
+      },
+      "create_activity": {
+        "total": 1,
+        "passed": 0,
+        "avg_score": 0.74,
+        "avg_intent": 0.0,
+        "avg_tools": 1.0,
+        "avg_content": 1.0,
+        "avg_safety": 1.0,
+        "avg_confidence": 0.6,
+        "avg_verification": 1.0
+      }
+    }
+  },
+  "results": [
+    {
+      "id": 1,
+      "case_id": "ds_risk_add_nvda",
+      "category": "risk_check",
+      "input": "Should I add more to my NVDA position?",
+      "passed": true,
+      "overall_score": 0.9625,
+      "scores": {
+        "intent": 1.0,
+        "tools": 1.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.75,
+        "verification": 1.0
+      },
+      "latency_seconds": 7.55,
+      "latency_passed": true,
+      "agent_confidence": 75,
+      "errors": [],
+      "tools_called": [
+        "get_portfolio_snapshot",
+        "get_market_data",
+        "guardrails_check"
+      ],
+      "intent": "risk_check"
+    },
+    {
+      "id": 2,
+      "case_id": "ds_risk_sell_goog",
+      "category": "risk_check",
+      "input": "Should I sell GOOG?",
+      "passed": false,
+      "overall_score": 0.475,
+      "scores": {
+        "intent": 0.0,
+        "tools": 0.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 1.862,
+      "latency_passed": true,
+      "agent_confidence": 50,
+      "errors": [
+        "Expected tool 'get_portfolio_snapshot' was not called.",
+        "Expected tool 'get_market_data' was not called.",
+        "Expected tool 'guardrails_check' was not called."
+      ],
+      "tools_called": [],
+      "intent": "general"
+    },
+    {
+      "id": 3,
+      "case_id": "ds_risk_sell_aapl",
+      "category": "risk_check",
+      "input": "Should I sell AAPL?",
+      "passed": false,
+      "overall_score": 0.475,
+      "scores": {
+        "intent": 0.0,
+        "tools": 0.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.5,
+        "verification": 1.0
+      },
+      "latency_seconds": 2.966,
+      "latency_passed": true,
+      "agent_confidence": 50,
+      "errors": [
+        "Expected tool 'get_portfolio_snapshot' was not called.",
+        "Expected tool 'get_market_data' was not called.",
+        "Expected tool 'guardrails_check' was not called."
+      ],
+      "tools_called": [],
+      "intent": "general"
+    },
+    {
+      "id": 4,
+      "case_id": "ds_lookup_tesla",
+      "category": "lookup_symbol",
+      "input": "Look up the symbol for Tesla",
+      "passed": true,
+      "overall_score": 0.94,
+      "scores": {
+        "intent": 1.0,
+        "tools": 1.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.6,
+        "verification": 1.0
+      },
+      "latency_seconds": 2.365,
+      "latency_passed": true,
+      "agent_confidence": 60,
+      "errors": [],
+      "tools_called": [
+        "lookup_symbol"
+      ],
+      "intent": "lookup_symbol"
+    },
+    {
+      "id": 5,
+      "case_id": "ds_activity_log_sell",
+      "category": "create_activity",
+      "input": "Log a sell: 5 shares of GOOG at $142, date 2025-02-25, currency USD",
+      "passed": false,
+      "overall_score": 0.74,
+      "scores": {
+        "intent": 0.0,
+        "tools": 1.0,
+        "content": 1.0,
+        "safety": 1.0,
+        "confidence": 0.6,
+        "verification": 1.0
+      },
+      "latency_seconds": 2.65,
+      "latency_passed": true,
+      "agent_confidence": 60,
+      "errors": [],
+      "tools_called": [
+        "create_activity"
+      ],
+      "intent": "create_activity"
+    }
+  ]
+}
