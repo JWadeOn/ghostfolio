@@ -89,12 +89,16 @@ def _fetch_with_retry(
         if len(symbols) == 1:
             df = yf.download(symbols[0], period=period, interval=interval, progress=False, threads=True)
             if df is not None and not df.empty:
-                # yfinance can return a Series for a single row; ensure DataFrame
                 if isinstance(df, pd.Series):
                     df = df.to_frame().T
+                # Newer yfinance returns MultiIndex columns even for single symbols
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
                 results[symbols[0]] = df
             else:
-                results[symbols[0]] = pd.DataFrame()
+                # Try last price from Ticker when download returned nothing
+                df = _fetch_single_price_row(yf.Ticker(symbols[0]), symbols[0])
+                results[symbols[0]] = df if not df.empty else pd.DataFrame()
             return results
 
         df = yf.download(symbols, period=period, interval=interval, group_by="ticker", progress=False, threads=True)
@@ -103,6 +107,9 @@ def _fetch_with_retry(
                 try:
                     sym_df = df[symbol] if symbol in df.columns.get_level_values(0) else pd.DataFrame()
                     if not sym_df.empty:
+                        # Flatten MultiIndex columns from batch download
+                        if isinstance(sym_df.columns, pd.MultiIndex):
+                            sym_df.columns = sym_df.columns.get_level_values(0)
                         sym_df = sym_df.dropna(how="all")
                     results[symbol] = sym_df if not sym_df.empty else pd.DataFrame()
                 except (KeyError, TypeError):
@@ -124,11 +131,13 @@ def _fetch_with_retry(
                 ticker = yf.Ticker(symbol)
                 df = ticker.history(period=period, interval=interval)
                 if df.empty:
-                    last_err = f"No data returned for {symbol}"
+                    # Try last price from fast_info or info so we can still return a quote
+                    df = _fetch_single_price_row(ticker, symbol)
+                if not df.empty:
+                    results[symbol] = df
+                    last_err = None
                     break
-                results[symbol] = df
-                last_err = None
-                break
+                last_err = f"No data returned for {symbol}"
             except Exception as e:
                 last_err = str(e)
                 if attempt < max_retries - 1:
@@ -142,6 +151,33 @@ def _fetch_with_retry(
             logger.error(f"Failed to fetch {symbol}: {last_err}")
 
     return results
+
+
+def _fetch_single_price_row(ticker: "yf.Ticker", symbol: str) -> pd.DataFrame:
+    """When history() is empty, try fast_info or info for last price; return 1-row DataFrame or empty."""
+    price = None
+    try:
+        fi = getattr(ticker, "fast_info", None)
+        if fi is not None and getattr(fi, "last_price", None) is not None:
+            price = float(fi.last_price)
+    except Exception:
+        pass
+    if price is None or price <= 0:
+        try:
+            info = getattr(ticker, "info", None) or {}
+            if isinstance(info, dict):
+                price = info.get("regularMarketPrice") or info.get("previousClose")
+            if price is not None:
+                price = float(price)
+        except Exception:
+            pass
+    if price is None or price <= 0:
+        return pd.DataFrame()
+    idx = pd.DatetimeIndex([pd.Timestamp.utcnow().normalize()])
+    return pd.DataFrame(
+        {"Open": price, "High": price, "Low": price, "Close": price, "Volume": 0},
+        index=idx,
+    )
 
 
 def _compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
@@ -375,6 +411,34 @@ def get_market_data(
         df = raw_data.get(symbol, pd.DataFrame())
         if df.empty:
             result[symbol] = {"error": f"No data available for {symbol}"}
+            continue
+        # Single row (e.g. from _fetch_single_price_row): return one record so synthesis can show last price
+        if len(df) == 1:
+            row = df.iloc[0]
+            result[symbol] = [{
+                "date": df.index[0].strftime("%Y-%m-%d"),
+                "open": _safe_float(row.get("Open")),
+                "high": _safe_float(row.get("High")),
+                "low": _safe_float(row.get("Low")),
+                "close": _safe_float(row.get("Close")),
+                "volume": _safe_float(row.get("Volume")),
+                "rsi_14": None,
+                "sma_20": None,
+                "sma_50": None,
+                "sma_200": None,
+                "ema_10": None,
+                "ema_21": None,
+                "macd": None,
+                "macd_signal": None,
+                "macd_histogram": None,
+                "bb_upper": None,
+                "bb_middle": None,
+                "bb_lower": None,
+                "atr_14": None,
+                "relative_volume": None,
+                "dist_52w_high_pct": None,
+                "dist_52w_low_pct": None,
+            }]
             continue
         try:
             result[symbol] = _compute_indicators(df)

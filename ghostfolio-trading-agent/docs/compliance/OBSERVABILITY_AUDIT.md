@@ -151,7 +151,7 @@ check_regression(current, previous) → float | None  # returns delta
 
 ## 6. User Feedback
 
-**Status:** Implemented (basic)
+**Status:** Implemented (basic) — **backend only; no UI**
 **Files:** `agent/app.py` (lines 263-318)
 
 **Endpoints:**
@@ -173,6 +173,12 @@ check_regression(current, previous) → float | None  # returns delta
 
 **Storage:** `data/feedback/{thread_id}_{timestamp}.json`
 **Summary:** total, thumbs_up, thumbs_down, with_corrections
+
+**Where it should be visible (not yet implemented):**
+
+- **Location:** Trading Assistant page (`apps/client/.../trading-agent-page`), on each **assistant** message row — e.g. thumbs up / thumbs down buttons (and optionally “Add correction” or a short comment field).
+- **Flow:** User rates a response → client sends `POST /api/feedback` with current `thread_id`, `rating`, and optional `correction`/`comment`. The Ghostfolio API does not yet proxy this endpoint; the client would need to call it via a new API route (e.g. `POST /api/v1/trading-agent/feedback`) that forwards to the agent’s `POST /api/feedback`.
+- **Usage:** Thumbs up = response was helpful; thumbs down = not helpful, with optional correction text to improve future answers. Summary (`GET /api/feedback/summary`) is for admins/analytics, not shown in the main chat UI by default.
 
 ---
 
