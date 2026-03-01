@@ -234,11 +234,23 @@ def _compute_confidence(state: AgentState) -> int:
     intent = state.get("intent", "general")
     regime = state.get("regime")
 
+    # Successful tools boost confidence; errors reduce it
+    successful_tools = 0
     for tool_name, result in tool_results.items():
         if isinstance(result, dict) and "error" in result:
             score -= 5
         else:
             score += 10
+            successful_tools += 1
+
+    # Data-retrieval intents with successful tools deserve higher confidence —
+    # we're reading real data, not making predictions
+    data_intents = (
+        "portfolio_overview", "performance_review", "price_quote",
+        "tax_implications", "compliance", "lookup_symbol", "create_activity",
+    )
+    if intent in data_intents and successful_tools > 0:
+        score += 15
 
     if regime and "composite" in regime:
         confidence = regime.get("confidence", 0)

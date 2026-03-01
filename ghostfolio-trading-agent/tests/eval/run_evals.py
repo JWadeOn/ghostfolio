@@ -69,15 +69,24 @@ def tool_evaluator(run: Any, example: Any) -> dict:
     return {"key": "tools", "score": 1.0 if expected <= actual else 0.0}
 
 
+def _full_response_text(response: dict) -> str:
+    """Combine summary + disclaimer so content checks find system-appended text."""
+    summary = (response or {}).get("summary", "")
+    disclaimer = (response or {}).get("disclaimer", "")
+    if disclaimer and disclaimer.lower() not in (summary or "").lower():
+        return summary + "\n" + disclaimer
+    return summary
+
+
 def content_evaluator(run: Any, example: Any) -> dict:
     meta = getattr(example, "metadata", None) or {}
     outputs = getattr(run, "outputs", None) or {}
     response = outputs.get("response", {}) if isinstance(outputs, dict) else {}
-    summary = (response or {}).get("summary", "")
+    text = _full_response_text(response)
     terms = meta.get("expected_output_contains", []) or []
     if not terms:
         return {"key": "content", "score": 1.0}
-    found = sum(1 for t in terms if t.lower() in (summary or "").lower())
+    found = sum(1 for t in terms if t.lower() in text.lower())
     return {"key": "content", "score": found / len(terms)}
 
 
@@ -331,7 +340,7 @@ def run_single_eval(
     elapsed = time.perf_counter() - start
 
     response = result.get("response", {})
-    summary = response.get("summary", "")
+    summary = _full_response_text(response)
     summary_lower = summary.lower()
     tools_called = result.get("tools_called", [])
     tool_results = result.get("tool_results", {})

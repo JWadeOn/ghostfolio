@@ -160,4 +160,68 @@ export class TradingAgentService {
       );
     }
   }
+
+  public async submitFeedback(body: {
+    thread_id: string;
+    rating: 'thumbs_up' | 'thumbs_down';
+    correction?: string;
+    comment?: string;
+  }): Promise<{ status: string; feedback_id: string }> {
+    const baseUrl = this.configurationService.get('TRADING_AGENT_URL');
+    if (!baseUrl?.trim()) {
+      throw new HttpException(
+        { error: 'Trading agent is not configured' },
+        StatusCodes.SERVICE_UNAVAILABLE
+      );
+    }
+
+    const url = `${baseUrl.replace(/\/$/, '')}/api/feedback`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new HttpException(
+          {
+            error:
+              response.status >= 500
+                ? 'Trading agent is unavailable'
+                : text || response.statusText
+          },
+          response.status >= 500 ? StatusCodes.BAD_GATEWAY : response.status
+        );
+      }
+
+      return (await response.json()) as {
+        status: string;
+        feedback_id: string;
+      };
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new HttpException(
+          { error: 'Trading agent request timed out' },
+          StatusCodes.GATEWAY_TIMEOUT
+        );
+      }
+      throw new HttpException(
+        { error: 'Trading agent is unavailable' },
+        StatusCodes.BAD_GATEWAY
+      );
+    }
+  }
 }

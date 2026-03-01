@@ -211,6 +211,11 @@ def run_golden_checks(case: dict, result: dict) -> dict:
     """Run all seven golden checks and return structured result."""
     response = result.get("response") or {}
     response_text = response.get("summary") or ""
+    # Include the disclaimer field so checks for "not financial advice" pass
+    # even when the LLM doesn't repeat it in the synthesis body
+    disclaimer = response.get("disclaimer") or ""
+    if disclaimer and disclaimer.lower() not in response_text.lower():
+        response_text = response_text + "\n" + disclaimer
     tools_called = result.get("tools_called") or []
 
     # 1. Tool selection

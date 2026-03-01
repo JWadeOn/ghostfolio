@@ -51,3 +51,44 @@
     <gf-footer class="py-4" [info]="info" [user]="user" />
   </footer>
 }
+
+@if (showTradingAgentFab) {
+  <div
+    class="trading-agent-float"
+    [style]="getTradingAgentWidgetStyle()"
+    (mousedown)="onTradingAgentWidgetPointerDown($event)"
+    (touchstart)="onTradingAgentWidgetPointerDown($event)"
+    role="presentation"
+  >
+    <div class="trading-agent-float-inner">
+      <a
+        class="trading-agent-ghost-btn"
+        [routerLink]="internalRoutes.tradingAgent.routerLink"
+        (click)="onTradingAgentFabClick($event)"
+        aria-label="Open Trading Assistant"
+        title="Trading Assistant"
+        i18n-title
+      >
+        <svg class="trading-agent-ghost-icon" viewBox="0 0 64 80" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <!-- Ghost body: rounded top, wavy bottom (Ghostfolio-style) -->
+          <path
+            class="ghost-body"
+            d="M32 6 C12 6 4 22 4 38 L4 54 L14 46 L22 54 L30 46 L32 48 L34 46 L42 54 L50 46 L60 54 L60 38 C60 22 52 6 32 6 Z"
+            fill="currentColor"
+          />
+          <!-- Eyes (white on dark body) -->
+          <circle class="ghost-eye" cx="24" cy="30" r="4" fill="var(--ghost-eye-fill, #fff)"/>
+          <circle class="ghost-eye" cx="40" cy="30" r="4" fill="var(--ghost-eye-fill, #fff)"/>
+          <!-- Bot antenna -->
+          <line class="ghost-antenna" x1="32" y1="4" x2="32" y2="0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <circle class="ghost-antenna-dot" cx="32" cy="0" r="2" fill="currentColor"/>
+        </svg>
+      </a>
+      <div class="trading-agent-greeting-bubble" aria-hidden="true">
+        <span class="trading-agent-greeting-text" i18n>I'm your portfolio assistant</span>
+        <span class="trading-agent-greeting-tail"></span>
+      </div>
+    </div>
+    <span class="trading-agent-float-hint" aria-hidden="true" i18n>Drag to move</span>
+  </div>
+}

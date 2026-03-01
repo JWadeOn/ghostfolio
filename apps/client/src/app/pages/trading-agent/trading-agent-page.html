@@ -21,7 +21,7 @@
         </div>
         <h2 class="welcome-title" i18n>Trading Assistant</h2>
         <p class="welcome-subtitle" i18n>
-          Ask about your portfolio, evaluate trades, or check market conditions.
+          Portfolio analysis, trade evaluation, and market intelligence — powered by AI.
         </p>
 
         <div class="prompt-grid">
@@ -42,6 +42,19 @@
     <!-- MESSAGES LIST -->
     @if (hasConversationStarted) {
       <div class="messages-list">
+        <!-- New conversation button -->
+        <div class="new-conversation-bar">
+          <button
+            class="new-conversation-btn"
+            (click)="onNewConversation()"
+            [disabled]="isLoading"
+            i18n
+          >
+            <ion-icon name="add-outline"></ion-icon>
+            New conversation
+          </button>
+        </div>
+
         @for (msg of messages; track $index) {
           <div
             class="message-row"
@@ -103,14 +116,46 @@
               @if (msg.disclaimer) {
                 <div class="message-disclaimer">{{ msg.disclaimer }}</div>
               }
-            } @else {
-              <div class="avatar-row">
-                <div class="avatar avatar-user">
-                  <ion-icon name="person-outline"></ion-icon>
+
+              <!-- Human-in-the-loop feedback: thumbs up / thumbs down -->
+              @if (threadId && !msg.error) {
+                <div
+                  class="message-feedback"
+                  role="group"
+                  [attr.aria-label]="'Rate this response'"
+                >
+                  @if (msg.feedbackThankYou) {
+                    <span class="feedback-thanks" i18n>Thanks for your feedback</span>
+                  } @else {
+                    <button
+                      type="button"
+                      class="feedback-btn"
+                      [class.feedback-btn-active]="msg.feedbackRating === 'thumbs_up'"
+                      [disabled]="msg.feedbackSubmitting || msg.feedbackRating != null"
+                      (click)="submitFeedback($index, 'thumbs_up')"
+                      [attr.aria-label]="'Helpful'"
+                      title="Helpful"
+                      i18n-title
+                    >
+                      <ion-icon name="thumbs-up-outline"></ion-icon>
+                    </button>
+                    <button
+                      type="button"
+                      class="feedback-btn"
+                      [class.feedback-btn-active]="msg.feedbackRating === 'thumbs_down'"
+                      [disabled]="msg.feedbackSubmitting || msg.feedbackRating != null"
+                      (click)="submitFeedback($index, 'thumbs_down')"
+                      [attr.aria-label]="'Not helpful'"
+                      title="Not helpful"
+                      i18n-title
+                    >
+                      <ion-icon name="thumbs-down-outline"></ion-icon>
+                    </button>
+                  }
                 </div>
-                <span class="avatar-label" i18n>You</span>
-              </div>
-              <div class="user-content">{{ msg.content }}</div>
+              }
+            } @else {
+              <div class="user-bubble">{{ msg.content }}</div>
             }
           </div>
         }
@@ -130,8 +175,13 @@
                 <span class="dot"></span>
                 <span class="dot"></span>
               </div>
-              <span class="thinking-text" i18n>Analyzing...</span>
+              <span class="thinking-text">{{ loadingStatusMessage }}</span>
             </div>
+            @if (showLoadingHint) {
+              <p class="thinking-hint" i18n>
+                This may take 30–60 seconds for full analysis.
+              </p>
+            }
           </div>
         }
       </div>
@@ -159,8 +209,13 @@
             class="send-btn"
             type="submit"
             [disabled]="isLoading || !inputMessage?.trim()"
+            [attr.aria-label]="sendButtonAriaLabel"
           >
-            <ion-icon name="arrow-up-outline"></ion-icon>
+            @if (isLoading) {
+              <ion-icon class="send-btn-spinner" name="sync-outline"></ion-icon>
+            } @else {
+              <ion-icon name="arrow-up-outline"></ion-icon>
+            }
           </button>
         </div>
       </form>

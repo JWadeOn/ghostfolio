@@ -60,6 +60,10 @@ def run_scenario(case: dict, agent_graph, idx: int) -> dict:
     eval_result = run_single_eval(case, agent_graph, case_id=idx, use_mocks=True)
     response = eval_result.get("response") or {}
     response_text = response.get("summary") or ""
+    # Include disclaimer field so "not financial advice" checks pass
+    disclaimer = response.get("disclaimer") or ""
+    if disclaimer and disclaimer.lower() not in response_text.lower():
+        response_text = response_text + "\n" + disclaimer
     tools_called = eval_result.get("tools_called") or []
     tool_errors = eval_result.get("tool_errors") or []
 

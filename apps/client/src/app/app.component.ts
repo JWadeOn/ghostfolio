@@ -12,6 +12,7 @@ import {
   Component,
   DOCUMENT,
   HostBinding,
+  HostListener,
   Inject,
   OnDestroy,
   OnInit
@@ -26,6 +27,7 @@ import {
   RouterLink,
   RouterOutlet
 } from '@angular/router';
+import { IonIcon } from '@ionic/angular/standalone';
 import { DataSource } from '@prisma/client';
 import { addIcons } from 'ionicons';
 import { openOutline } from 'ionicons/icons';
@@ -43,7 +45,13 @@ import { UserService } from './services/user/user.service';
 
 @Component({
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [GfFooterComponent, GfHeaderComponent, RouterLink, RouterOutlet],
+  imports: [
+    GfFooterComponent,
+    GfHeaderComponent,
+    IonIcon,
+    RouterLink,
+    RouterOutlet
+  ],
   selector: 'gf-root',
   styleUrls: ['./app.component.scss'],
   templateUrl: './app.component.html'
@@ -68,6 +76,18 @@ export class GfAppComponent implements OnDestroy, OnInit {
   public routerLinkRegister = publicRoutes.register.routerLink;
   public showFooter = false;
   public user: User;
+  public internalRoutes = internalRoutes;
+
+  /** Draggable widget position (px from left/top). When null, use CSS default (bottom-left). */
+  public tradingAgentWidgetPosition: { x: number; y: number } | null = null;
+  private readonly TRADING_AGENT_POSITION_KEY = 'gf_trading_agent_widget_position';
+  private dragStartX = 0;
+  private dragStartY = 0;
+  private dragStartLeft = 0;
+  private dragStartTop = 0;
+  private isDragActive = false;
+  private didMoveEnough = false;
+  public wasDragging = false;
 
   private unsubscribeSubject = new Subject<void>();
 
@@ -106,9 +126,151 @@ export class GfAppComponent implements OnDestroy, OnInit {
     addIcons({ openOutline });
   }
 
+  public get showTradingAgentFab(): boolean {
+    return (
+      !!this.user &&
+      hasPermission(this.user?.permissions, permissions.readAiPrompt) &&
+      this.currentRoute !== internalRoutes.tradingAgent.path
+    );
+  }
+
+  public getTradingAgentWidgetStyle(): Record<string, string> {
+    const pos = this.tradingAgentWidgetPosition;
+    if (!pos) return {};
+    return {
+      left: `${pos.x}px`,
+      top: `${pos.y}px`,
+      bottom: 'auto',
+      right: 'auto'
+    };
+  }
+
+  public onTradingAgentWidgetPointerDown(event: MouseEvent | TouchEvent): void {
+    if (!this.showTradingAgentFab) return;
+    const isTouch = event instanceof TouchEvent;
+    const clientX = isTouch ? (event as TouchEvent).touches[0].clientX : (event as MouseEvent).clientX;
+    const clientY = isTouch ? (event as TouchEvent).touches[0].clientY : (event as MouseEvent).clientY;
+    if (!isTouch && (event as MouseEvent).button !== 0) return;
+
+    const rect = (event.target as HTMLElement).closest('.trading-agent-float')?.getBoundingClientRect();
+    if (!rect) return;
+
+    this.isDragActive = true;
+    this.didMoveEnough = false;
+    this.dragStartX = clientX;
+    this.dragStartY = clientY;
+    this.dragStartLeft = this.tradingAgentWidgetPosition
+      ? this.tradingAgentWidgetPosition.x
+      : Math.round(rect.left);
+    this.dragStartTop = this.tradingAgentWidgetPosition
+      ? this.tradingAgentWidgetPosition.y
+      : Math.round(rect.top);
+  }
+
+  @HostListener('document:mousemove', ['$event'])
+  onDocumentMouseMove(event: MouseEvent): void {
+    if (!this.isDragActive || !this.showTradingAgentFab) return;
+    const dx = event.clientX - this.dragStartX;
+    const dy = event.clientY - this.dragStartY;
+    if (!this.didMoveEnough && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+      this.didMoveEnough = true;
+    }
+    if (this.didMoveEnough) {
+      const padding = 16;
+      const maxW = this.document.documentElement.clientWidth - 200;
+      const maxH = this.document.documentElement.clientHeight - 120;
+      const x = Math.max(padding, Math.min(maxW, this.dragStartLeft + dx));
+      const y = Math.max(padding, Math.min(maxH, this.dragStartTop + dy));
+      this.tradingAgentWidgetPosition = { x, y };
+      this.changeDetectorRef.markForCheck();
+    }
+  }
+
+  @HostListener('document:mouseup')
+  onDocumentMouseUp(): void {
+    if (!this.isDragActive) return;
+    if (this.didMoveEnough) {
+      this.wasDragging = true;
+      this.saveTradingAgentPosition();
+    }
+    this.isDragActive = false;
+    this.changeDetectorRef.markForCheck();
+  }
+
+  @HostListener('document:touchmove', ['$event'])
+  onDocumentTouchMove(event: TouchEvent): void {
+    if (!this.isDragActive || !this.showTradingAgentFab || !event.touches.length) return;
+    const dx = event.touches[0].clientX - this.dragStartX;
+    const dy = event.touches[0].clientY - this.dragStartY;
+    if (!this.didMoveEnough && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+      this.didMoveEnough = true;
+    }
+    if (this.didMoveEnough) {
+      event.preventDefault();
+      const padding = 16;
+      const maxW = this.document.documentElement.clientWidth - 200;
+      const maxH = this.document.documentElement.clientHeight - 120;
+      const x = Math.max(padding, Math.min(maxW, this.dragStartLeft + dx));
+      const y = Math.max(padding, Math.min(maxH, this.dragStartTop + dy));
+      this.tradingAgentWidgetPosition = { x, y };
+      this.changeDetectorRef.markForCheck();
+    }
+  }
+
+  @HostListener('document:touchend')
+  onDocumentTouchEnd(): void {
+    if (!this.isDragActive) return;
+    if (this.didMoveEnough) {
+      this.wasDragging = true;
+      this.saveTradingAgentPosition();
+    }
+    this.isDragActive = false;
+    this.changeDetectorRef.markForCheck();
+  }
+
+  public onTradingAgentFabClick(event: Event): void {
+    if (this.wasDragging) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.wasDragging = false;
+    }
+  }
+
+  private loadTradingAgentPosition(): void {
+    try {
+      const raw = this.document.defaultView?.localStorage?.getItem(this.TRADING_AGENT_POSITION_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { x: number; y: number };
+        const padding = 16;
+        const maxW = this.document.documentElement.clientWidth - 200;
+        const maxH = this.document.documentElement.clientHeight - 120;
+        this.tradingAgentWidgetPosition = {
+          x: Math.max(padding, Math.min(maxW, parsed.x)),
+          y: Math.max(padding, Math.min(maxH, parsed.y))
+        };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  private saveTradingAgentPosition(): void {
+    if (!this.tradingAgentWidgetPosition) return;
+    try {
+      this.document.defaultView?.localStorage?.setItem(
+        this.TRADING_AGENT_POSITION_KEY,
+        JSON.stringify(this.tradingAgentWidgetPosition)
+      );
+    } catch {
+      // ignore
+    }
+  }
+
   public ngOnInit() {
     this.deviceType = this.deviceService.getDeviceInfo().deviceType;
     this.info = this.dataService.fetchInfo();
+    this.updateRouteFromRouter();
+    this.loadTradingAgentPosition();
 
     this.impersonationStorageService
       .onChangeHasImpersonation()
@@ -120,11 +282,7 @@ export class GfAppComponent implements OnDestroy, OnInit {
     this.router.events
       .pipe(filter((event) => event instanceof NavigationEnd))
       .subscribe(() => {
-        const urlTree = this.router.parseUrl(this.router.url);
-        const urlSegmentGroup = urlTree.root.children[PRIMARY_OUTLET];
-        const urlSegments = urlSegmentGroup.segments;
-        this.currentRoute = urlSegments[0].path;
-        this.currentSubRoute = urlSegments[1]?.path;
+        this.updateRouteFromRouter();
 
         if (
           ((this.currentRoute === internalRoutes.home.path &&
@@ -249,6 +407,14 @@ export class GfAppComponent implements OnDestroy, OnInit {
   public ngOnDestroy() {
     this.unsubscribeSubject.next();
     this.unsubscribeSubject.complete();
+  }
+
+  private updateRouteFromRouter(): void {
+    const urlTree = this.router.parseUrl(this.router.url);
+    const urlSegmentGroup = urlTree.root.children[PRIMARY_OUTLET];
+    const urlSegments = urlSegmentGroup?.segments ?? [];
+    this.currentRoute = urlSegments[0]?.path;
+    this.currentSubRoute = urlSegments[1]?.path;
   }
 
   private initializeTheme(userPreferredColorScheme?: ColorScheme) {

@@ -67,6 +67,26 @@ export class FinancialModelingPrepService implements DataProviderInterface {
     return true;
   }
 
+  /**
+   * Parse fetch response as JSON. If the body is not JSON (e.g. "Restricted" or "Premium Query"
+   * from FMP when plan/rate limit applies), throw a clear error including the response snippet.
+   */
+  private static async parseJsonResponse(res: Response): Promise<unknown> {
+    const text = await res.text();
+    const snippet = text?.trim().slice(0, 120) ?? '';
+    try {
+      return text ? JSON.parse(text) : null;
+    } catch {
+      Logger.error(
+        `FMP API returned non-JSON response (plan/rate limit?): ${snippet}`,
+        'FinancialModelingPrepService'
+      );
+      throw new Error(
+        `Financial Modeling Prep API returned non-JSON (check plan/rate limit): ${snippet}`
+      );
+    }
+  }
+
   public async getAssetProfile({
     requestTimeout = this.configurationService.get('REQUEST_TIMEOUT'),
     symbol
@@ -347,12 +367,14 @@ export class FinancialModelingPrepService implements DataProviderInterface {
           to: format(currentTo, DATE_FORMAT)
         });
 
-        const historical = await fetch(
+        const historical = (await fetch(
           `${this.getUrl({ version: 'stable' })}/historical-price-eod/full?${queryParams.toString()}`,
           {
             signal: AbortSignal.timeout(requestTimeout)
           }
-        ).then((res) => res.json());
+        ).then((res) =>
+          FinancialModelingPrepService.parseJsonResponse(res)
+        )) as { close: number; date: string }[];
 
         for (const { close, date } of historical) {
           if (
@@ -403,27 +425,45 @@ export class FinancialModelingPrepService implements DataProviderInterface {
         [symbol: string]: Pick<SymbolProfile, 'currency'>;
       } = {};
 
-      const queryParams = new URLSearchParams({
-        symbols: symbols.join(','),
-        apikey: this.apiKey
-      });
-
-      const [assetProfileResolutions, quotes] = await Promise.all([
+      // Use individual /stable/quote-short calls instead of /stable/batch-quote-short
+      // because the batch endpoint requires a paid FMP plan.
+      const [assetProfileResolutions, ...quoteResults] = await Promise.all([
         this.prismaService.assetProfileResolution.findMany({
           where: {
             dataSourceTarget: this.getDataProviderInfo().dataSource,
             symbolTarget: { in: symbols }
           }
         }),
-        fetch(
-          `${this.getUrl({ version: 'stable' })}/batch-quote-short?${queryParams.toString()}`,
-          {
-            signal: AbortSignal.timeout(requestTimeout)
-          }
-        ).then(
-          (res) => res.json() as unknown as { price: number; symbol: string }[]
-        )
+        ...symbols.map((symbol) => {
+          const queryParams = new URLSearchParams({
+            symbol,
+            apikey: this.apiKey
+          });
+
+          return fetch(
+            `${this.getUrl({ version: 'stable' })}/quote-short?${queryParams.toString()}`,
+            {
+              signal: AbortSignal.timeout(requestTimeout)
+            }
+          )
+            .then((res) =>
+              FinancialModelingPrepService.parseJsonResponse(res)
+            )
+            .then((data: { price: number; symbol: string }[]) =>
+              data?.[0] ?? null
+            )
+            .catch((error) => {
+              Logger.warn(
+                `Could not get quote for ${symbol}: ${error.message}`,
+                'FinancialModelingPrepService'
+              );
+              return null;
+            });
+        })
       ]);
+
+      const quotes = (quoteResults as ({ price: number; symbol: string } | null)[])
+        .filter(Boolean) as { price: number; symbol: string }[];
 
       for (const { currency, symbolTarget } of assetProfileResolutions) {
         currencyBySymbolMap[symbolTarget] = { currency };

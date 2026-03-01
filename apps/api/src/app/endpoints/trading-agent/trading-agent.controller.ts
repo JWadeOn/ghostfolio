@@ -15,6 +15,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Request } from 'express';
 
 import { TradingAgentChatDto } from './trading-agent-chat.dto';
+import { TradingAgentFeedbackDto } from './trading-agent-feedback.dto';
 import {
   TradingAgentChatResponse,
   TradingAgentConversationResponse,
@@ -48,5 +49,14 @@ export class TradingAgentController {
     @Param('threadId') threadId: string
   ): Promise<TradingAgentConversationResponse> {
     return this.tradingAgentService.getConversation(threadId);
+  }
+
+  @Post('feedback')
+  @HasPermission(permissions.readAiPrompt)
+  @UseGuards(AuthGuard('jwt'), HasPermissionGuard)
+  public async submitFeedback(
+    @Body() body: TradingAgentFeedbackDto
+  ): Promise<{ status: string; feedback_id: string }> {
+    return this.tradingAgentService.submitFeedback(body);
   }
 }
