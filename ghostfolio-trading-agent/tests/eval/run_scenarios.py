@@ -44,6 +44,7 @@ from tests.eval.golden_checks import (
     check_tools,
     check_tools_any,
     check_tools_plus_any_of,
+    check_authoritative_sources,
     check_must_contain,
     check_contains_any,
     check_must_not_contain,
@@ -105,7 +106,15 @@ def run_scenario(case: dict, agent_graph, idx: int) -> dict:
         give_up_phrases=give_up_override,
     )
 
-    all_checks = [tool_ok, tool_exec_ok, content_ok, negative_ok]
+    # 5. Authoritative sources — expected source IDs in response field
+    expected_auth = case.get("expected_authoritative_sources") or []
+    if expected_auth:
+        auth_sources_field = response.get("authoritative_sources", [])
+        source_ok, source_err = check_authoritative_sources(expected_auth, auth_sources_field)
+    else:
+        source_ok, source_err = True, ""
+
+    all_checks = [tool_ok, tool_exec_ok, content_ok, negative_ok, source_ok]
     passed = all(c for c in all_checks if c is not None)
 
     return {
@@ -120,6 +129,7 @@ def run_scenario(case: dict, agent_graph, idx: int) -> dict:
             "tool_execution": {"passed": tool_exec_ok, "error": tool_exec_err},
             "content": {"passed": content_ok, "error": content_err},
             "negative": {"passed": negative_ok, "error": negative_err},
+            "source_citation": {"passed": source_ok, "error": source_err},
         },
         "tools_called": tools_called,
         "tool_errors": tool_errors,
@@ -182,6 +192,7 @@ def print_summary(results: list[dict]) -> bool:
         "tool_execution": "ToolExec",
         "content": "Content",
         "negative": "Negative",
+        "source_citation": "Sources",
     }
 
     by_group: dict[str, list[dict]] = defaultdict(list)

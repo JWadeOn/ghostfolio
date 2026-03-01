@@ -9,6 +9,9 @@ Design principles:
   - All queries are REPHRASED from golden set — no exact duplicates
   - Categorized by: tool type, complexity, difficulty
   - Some failure is OK — this is a coverage map, not a regression gate
+  - Authoritative sources: compliance/tax scenarios may include
+    expected_authoritative_sources (list of source IDs) to verify the
+    response includes IRC/IRS citations in its authoritative_sources field
 
 Difficulty tiers:
   - straightforward: clear intent, one tool, no ambiguity
@@ -225,6 +228,7 @@ scenarios = {
                 "id": "sc-m-006",
                 "query": "Check if any of my trades from the past month could be a wash sale issue",
                 "expected_tools": ["compliance_check", "get_trade_history"],
+                "expected_authoritative_sources": ["irc_1091", "irs_pub550"],
                 "expected_output_contains": ["wash sale"],
                 "should_not_contain": ["I don't know", "unable"],
                 "difficulty": "straightforward",
@@ -233,6 +237,7 @@ scenarios = {
                 "id": "sc-m-007",
                 "query": "If I liquidate my TSLA shares now, what are the capital gains consequences?",
                 "expected_tools_any": ["compliance_check", "get_trade_history", "get_portfolio_snapshot"],
+                "expected_authoritative_sources": ["irc_1222", "irc_1h"],
                 "expected_output_contains_any": ["capital gain", "tax", "TSLA"],
                 "should_not_contain": ["I don't know", "unable"],
                 "difficulty": "moderate",
@@ -241,9 +246,50 @@ scenarios = {
                 "id": "sc-m-008",
                 "query": "Run a full compliance scan on my portfolio",
                 "expected_tools": ["compliance_check"],
+                "expected_authoritative_sources": ["irc_1091", "irs_pub550", "irc_1222", "irc_1h"],
                 "expected_output_contains_any": ["compliance", "wash sale", "regulation", "capital gain"],
                 "should_not_contain": ["I don't know", "unable"],
                 "difficulty": "straightforward",
+            },
+        ],
+        "authoritative_sources": [
+            {
+                "id": "sc-as-001",
+                "query": "What IRS rules apply to wash sales on my recent trades?",
+                "expected_tools": ["compliance_check", "get_trade_history"],
+                "expected_authoritative_sources": ["irc_1091", "irs_pub550"],
+                "expected_output_contains": ["wash sale"],
+                "expected_output_contains_any": ["30 day", "rule", "IRC", "IRS", "§1091"],
+                "should_not_contain": ["I don't know", "unable"],
+                "difficulty": "moderate",
+            },
+            {
+                "id": "sc-as-002",
+                "query": "Walk me through the capital gains rules for my current holdings",
+                "expected_tools": ["compliance_check", "get_trade_history"],
+                "expected_authoritative_sources": ["irc_1222", "irc_1h"],
+                "expected_output_contains_any": ["capital gain", "short-term", "long-term"],
+                "should_not_contain": ["I don't know", "unable"],
+                "difficulty": "moderate",
+            },
+            {
+                "id": "sc-as-003",
+                "query": "Check my portfolio for all compliance issues — wash sales, capital gains classification, and tax-loss harvesting",
+                "expected_tools": ["compliance_check", "get_trade_history"],
+                "expected_authoritative_sources": ["irc_1091", "irs_pub550", "irc_1222", "irc_1h", "irs_pub544"],
+                "expected_output_contains_any": ["wash sale", "capital gain", "compliance", "tax-loss"],
+                "should_not_contain": ["I don't know", "unable"],
+                "difficulty": "complex",
+            },
+            {
+                "id": "sc-as-004",
+                "query": "Would selling my AAPL shares trigger any wash sale or capital gains issues?",
+                "expected_tools_any": ["compliance_check", "get_trade_history", "get_portfolio_snapshot"],
+                "expected_authoritative_sources": ["irc_1091", "irc_1222"],
+                "expected_output_contains": ["AAPL"],
+                "expected_output_contains_any": ["wash sale", "capital gain", "short-term", "long-term"],
+                "should_not_contain": ["I don't know", "unable"],
+                "difficulty": "moderate",
             },
         ],
         "comprehensive": [

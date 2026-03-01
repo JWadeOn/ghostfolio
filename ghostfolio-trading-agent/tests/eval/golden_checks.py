@@ -3,7 +3,9 @@
 Seven check types — all pure functions, no LLM calls:
   1. Tool selection     — required tools present; or expected_tools_any: at least one of list or no tools; or expected_tools_plus_any_of: all expected_tools plus at least one of list. No extras when exact_tools is set.
   2. Tool execution     — for cases that called tools, no tool returned an error (tool_errors empty).
-  3. Source citation     — expected source references appear in response text.
+  3. Source citation     — expected source references appear in response text (expected_sources)
+                          AND/OR expected authoritative source IDs appear in response.authoritative_sources
+                          (expected_authoritative_sources). Both sub-checks feed into one dimension.
   4. Content validation  — all must_contain terms appear in response; optionally at least one of expected_output_contains_any.
   5. Negative validation — no must_not_contain terms, no give-up phrases, non-empty.
   6. Ground truth        — known mock-data values appear in response (e.g. "$187.50").
@@ -77,6 +79,36 @@ def check_sources(expected: list[str], response_text: str) -> tuple[bool, str]:
 
     if missing:
         return (False, f"Missing source references: {missing}")
+
+    return (True, "")
+
+
+def check_authoritative_sources(
+    expected_ids: list[str],
+    authoritative_sources: list[dict],
+) -> tuple[bool, str]:
+    """Check that expected authoritative source IDs appear in the response's authoritative_sources field.
+
+    Resolves source IDs to labels via the authoritative_sources module, then verifies
+    that each expected source appears in the structured response field.
+    """
+    if not expected_ids:
+        return (True, "")
+
+    from agent.authoritative_sources import get_source_by_id
+
+    actual_labels = {s.get("label", "") for s in authoritative_sources}
+    missing = []
+    for sid in expected_ids:
+        source = get_source_by_id(sid)
+        if source is None:
+            missing.append(f"{sid} (unknown source ID)")
+            continue
+        if source["label"] not in actual_labels:
+            missing.append(f"{sid} ({source['label']})")
+
+    if missing:
+        return (False, f"Missing authoritative sources: {missing}")
 
     return (True, "")
 
@@ -209,11 +241,20 @@ def run_golden_checks(case: dict, result: dict) -> dict:
         tool_exec_ok = True  # N/A when no tools called
         tool_exec_err = ""
 
-    # 3. Source citation
+    # 3. Source citation (text references + structured authoritative sources)
     source_ok, source_err = check_sources(
         case.get("expected_sources", []),
         response_text,
     )
+
+    # 3b. Authoritative sources (structured field in response)
+    expected_auth = case.get("expected_authoritative_sources", [])
+    if expected_auth:
+        auth_sources = response.get("authoritative_sources", [])
+        auth_ok, auth_err = check_authoritative_sources(expected_auth, auth_sources)
+        if not auth_ok:
+            source_ok = False
+            source_err = (source_err + "; " + auth_err) if source_err else auth_err
 
     # 4. Content validation
     must_contain = list(case.get("expected_output_contains") or []) + list(case.get("should_contain") or [])

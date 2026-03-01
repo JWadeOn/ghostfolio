@@ -4,15 +4,12 @@ Deterministic, binary checks (no LLM needed) covering seven dimensions:
   1. Tool selection     — did the agent call the right tools?
   2. Tool execution     — did every tool call succeed (no tool_errors)?
   3. Source citation     — did the response cite the right data source?
+       - expected_sources: text references in response summary
+       - expected_authoritative_sources: source IDs in response.authoritative_sources field
   4. Content validation  — does the response contain the key facts?
   5. Negative validation — no hallucination, no give-up, no forbidden terms?
   6. Ground truth        — do known mock-data values appear in the response?
   7. Structural          — react_step count and per-case latency within budget?
-
-Note: source citation (expected_sources) is not currently tested because the
-agent does not cite external documents or data providers in its responses.
-When source attribution is added (e.g. "Based on Ghostfolio data..."),
-expected_sources checks can be enabled.
 
 Run: python3 tests/eval/run_golden.py
      python3 tests/eval/run_golden.py --verbose
@@ -149,6 +146,7 @@ GOLDEN_CASES = [
         "case_type": "happy_path",
         "input": "Could any of my current positions trigger a wash sale if I sold them today?",
         "expected_tools": ["compliance_check", "get_trade_history"],
+        "expected_authoritative_sources": ["irc_1091", "irs_pub550"],
         "expected_output_contains": ["wash sale"],
         "should_not_contain": ["I don't know", "unable"],
         "max_react_steps": 3,
@@ -400,6 +398,7 @@ GOLDEN_CASES = [
         "case_type": "multi_step",
         "input": "Do I have any wash sale issues?",
         "expected_tools": ["compliance_check", "get_trade_history"],
+        "expected_authoritative_sources": ["irc_1091", "irs_pub550"],
         "expected_output_contains": ["wash sale"],
         "should_not_contain": ["I don't know", "unable"],
         "max_react_steps": 3,
@@ -436,6 +435,49 @@ GOLDEN_CASES = [
         "phase": 1,
         "live_safe": False,
     },
+
+    # ════════════════════════════════════════════════════════════════════
+    # AUTHORITATIVE SOURCES — verify source citations in response (3 cases)
+    # ════════════════════════════════════════════════════════════════════
+    {
+        "id": "gs-032",
+        "category": "compliance",
+        "case_type": "happy_path",
+        "input": "Check all my positions for wash sale violations and capital gains classification",
+        "expected_tools": ["compliance_check", "get_trade_history"],
+        "expected_authoritative_sources": ["irc_1091", "irs_pub550", "irc_1222", "irc_1h", "irs_pub544"],
+        "expected_output_contains_any": ["wash sale", "capital gains", "compliance"],
+        "should_not_contain": ["I don't know", "unable"],
+        "max_react_steps": 3,
+        "max_latency_seconds": 15,
+        "phase": 1,
+    },
+    {
+        "id": "gs-033",
+        "category": "compliance",
+        "case_type": "happy_path",
+        "input": "Are any of my holdings classified as short-term or long-term capital gains?",
+        "expected_tools": ["compliance_check", "get_trade_history"],
+        "expected_authoritative_sources": ["irc_1222", "irc_1h"],
+        "expected_output_contains_any": ["capital gain", "short-term", "long-term"],
+        "should_not_contain": ["I don't know", "unable"],
+        "max_react_steps": 3,
+        "max_latency_seconds": 15,
+        "phase": 1,
+    },
+    {
+        "id": "gs-034",
+        "category": "compliance",
+        "case_type": "multi_step",
+        "input": "Do a full compliance review — wash sales, capital gains, and tax-loss harvesting opportunities",
+        "expected_tools": ["compliance_check", "get_trade_history"],
+        "expected_authoritative_sources": ["irc_1091", "irs_pub550", "irc_1222", "irc_1h"],
+        "expected_output_contains_any": ["wash sale", "capital gains", "compliance", "tax-loss"],
+        "should_not_contain": ["I don't know", "unable"],
+        "max_react_steps": 4,
+        "max_latency_seconds": 20,
+        "phase": 1,
+    },
 ]
 
-assert len(GOLDEN_CASES) == 31, f"Golden set must have exactly 31 cases, got {len(GOLDEN_CASES)}"
+assert len(GOLDEN_CASES) == 34, f"Golden set must have exactly 34 cases, got {len(GOLDEN_CASES)}"
