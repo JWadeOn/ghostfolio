@@ -449,9 +449,13 @@ def get_market_data(
             logger.error(f"Indicator computation failed for {symbol}: {e}")
             result[symbol] = {"error": f"Indicator computation failed: {str(e)}"}
 
-    # Update cache only when not bypassing
+    # Update cache only when not bypassing and no errors in result
     if not bypass_cache:
-        key = _cache_key(symbols, period, interval)
-        _cache[key] = (now, result)
+        has_errors = any(
+            isinstance(v, dict) and "error" in v for v in result.values()
+        )
+        if not has_errors:
+            key = _cache_key(symbols, period, interval)
+            _cache[key] = (now, result)
 
     return result
