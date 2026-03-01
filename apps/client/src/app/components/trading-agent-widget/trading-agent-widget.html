@@ -1,0 +1,141 @@
+<div class="widget-panel">
+  <!-- HEADER -->
+  <div class="widget-header">
+    <div class="widget-header-left">
+      <div class="widget-header-avatar">
+        <ion-icon name="sparkles-outline"></ion-icon>
+      </div>
+      <div class="widget-header-info">
+        <span class="widget-header-title" i18n>Trading Assistant</span>
+        <span class="widget-header-status" i18n>Online</span>
+      </div>
+    </div>
+    <div class="widget-header-actions">
+      <button
+        type="button"
+        class="widget-header-btn widget-header-btn-expand"
+        (click)="onOpenFullPage()"
+        title="Open full page"
+        i18n-title
+        aria-label="Open full page"
+      >
+        <ion-icon name="expand-outline"></ion-icon>
+      </button>
+      <button
+        type="button"
+        class="widget-header-btn widget-header-btn-close"
+        (click)="onClose()"
+        title="Close"
+        i18n-title
+        aria-label="Close chat"
+      >
+        <ion-icon name="close-outline"></ion-icon>
+      </button>
+    </div>
+  </div>
+
+  <!-- MESSAGES -->
+  <div #widgetMessages class="widget-messages">
+    @if (isRestoring) {
+      <div class="widget-restoring">
+        <div class="thinking-dots">
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+        </div>
+        <span class="widget-restoring-text" i18n>Restoring conversation...</span>
+      </div>
+    }
+
+    @if (!hasConversationStarted && !isRestoring) {
+      <div class="widget-empty">
+        <div class="widget-empty-icon-wrap">
+          <ion-icon name="sparkles-outline" class="widget-empty-icon"></ion-icon>
+        </div>
+        <p class="widget-empty-title" i18n>How can I help?</p>
+        <p class="widget-empty-subtitle" i18n>Ask about your portfolio, trades, or market data.</p>
+      </div>
+    }
+
+    @if (hasConversationStarted) {
+      @for (msg of messages; track $index) {
+        <div
+          class="widget-msg"
+          [class.widget-msg-user]="msg.role === 'user'"
+          [class.widget-msg-assistant]="msg.role === 'assistant'"
+          [class.widget-msg-error]="msg.error"
+        >
+          @if (msg.role === 'user') {
+            <div class="widget-user-bubble">{{ msg.content }}</div>
+          } @else {
+            <div class="widget-assistant-row">
+              <div class="widget-assistant-avatar">
+                <ion-icon name="sparkles-outline"></ion-icon>
+              </div>
+              <div class="widget-assistant-body">
+                <div class="widget-assistant-content">
+                  <markdown [data]="msg.content"></markdown>
+                </div>
+                @if (msg.confidence !== undefined) {
+                  <span
+                    class="widget-confidence"
+                    [ngClass]="getConfidenceLevel(msg.confidence).cssClass"
+                  >
+                    {{ msg.confidence }}% confidence
+                  </span>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+
+      @if (isLoading) {
+        <div class="widget-msg widget-msg-assistant">
+          <div class="widget-assistant-row">
+            <div class="widget-assistant-avatar">
+              <ion-icon name="sparkles-outline"></ion-icon>
+            </div>
+            <div class="widget-assistant-body">
+              <div class="widget-thinking">
+                <div class="thinking-dots">
+                  <span class="dot"></span>
+                  <span class="dot"></span>
+                  <span class="dot"></span>
+                </div>
+                <span class="widget-thinking-text">{{ loadingStatusMessage }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    }
+  </div>
+
+  <!-- INPUT -->
+  <div class="widget-input-area">
+    <form class="widget-input-form" (ngSubmit)="onSubmit()">
+      <input
+        autocomplete="off"
+        class="widget-input"
+        name="inputMessage"
+        [disabled]="isLoading"
+        [placeholder]="inputPlaceholder"
+        [(ngModel)]="inputMessage"
+        (keydown.enter)="$event.preventDefault(); onSubmit()"
+      />
+      <button
+        class="widget-send-btn"
+        type="submit"
+        [disabled]="isLoading || !inputMessage?.trim()"
+        aria-label="Send"
+      >
+        @if (isLoading) {
+          <ion-icon class="widget-send-spinner" name="sync-outline"></ion-icon>
+        } @else {
+          <ion-icon name="arrow-up-outline"></ion-icon>
+        }
+      </button>
+    </form>
+  </div>
+</div>

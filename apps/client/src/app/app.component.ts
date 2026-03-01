@@ -39,6 +39,7 @@ import { GfFooterComponent } from './components/footer/footer.component';
 import { GfHeaderComponent } from './components/header/header.component';
 import { GfHoldingDetailDialogComponent } from './components/holding-detail-dialog/holding-detail-dialog.component';
 import { HoldingDetailDialogParams } from './components/holding-detail-dialog/interfaces/interfaces';
+import { GfTradingAgentWidgetComponent } from './components/trading-agent-widget/trading-agent-widget.component';
 import { ImpersonationStorageService } from './services/impersonation-storage.service';
 import { TokenStorageService } from './services/token-storage.service';
 import { UserService } from './services/user/user.service';
@@ -48,6 +49,7 @@ import { UserService } from './services/user/user.service';
   imports: [
     GfFooterComponent,
     GfHeaderComponent,
+    GfTradingAgentWidgetComponent,
     IonIcon,
     RouterLink,
     RouterOutlet
@@ -77,6 +79,7 @@ export class GfAppComponent implements OnDestroy, OnInit {
   public showFooter = false;
   public user: User;
   public internalRoutes = internalRoutes;
+  public isChatWidgetOpen = false;
 
   /** Draggable widget position (px from left/top). When null, use CSS default (bottom-left). */
   public tradingAgentWidgetPosition: { x: number; y: number } | null = null;
@@ -135,6 +138,9 @@ export class GfAppComponent implements OnDestroy, OnInit {
   }
 
   public getTradingAgentWidgetStyle(): Record<string, string> {
+    // When chat widget is open, snap FAB back to default bottom-right
+    // so the panel sits cleanly above it
+    if (this.isChatWidgetOpen) return {};
     const pos = this.tradingAgentWidgetPosition;
     if (!pos) return {};
     return {
@@ -146,7 +152,7 @@ export class GfAppComponent implements OnDestroy, OnInit {
   }
 
   public onTradingAgentWidgetPointerDown(event: MouseEvent | TouchEvent): void {
-    if (!this.showTradingAgentFab) return;
+    if (!this.showTradingAgentFab || this.isChatWidgetOpen) return;
     const isTouch = event instanceof TouchEvent;
     const clientX = isTouch ? (event as TouchEvent).touches[0].clientX : (event as MouseEvent).clientX;
     const clientY = isTouch ? (event as TouchEvent).touches[0].clientY : (event as MouseEvent).clientY;
@@ -154,6 +160,9 @@ export class GfAppComponent implements OnDestroy, OnInit {
 
     const rect = (event.target as HTMLElement).closest('.trading-agent-float')?.getBoundingClientRect();
     if (!rect) return;
+
+    // Prevent browser-native link drag from swallowing mousemove events
+    event.preventDefault();
 
     this.isDragActive = true;
     this.didMoveEnough = false;
@@ -233,7 +242,15 @@ export class GfAppComponent implements OnDestroy, OnInit {
       event.preventDefault();
       event.stopPropagation();
       this.wasDragging = false;
+      return;
     }
+    this.isChatWidgetOpen = !this.isChatWidgetOpen;
+    this.changeDetectorRef.markForCheck();
+  }
+
+  public onChatWidgetClosed(): void {
+    this.isChatWidgetOpen = false;
+    this.changeDetectorRef.markForCheck();
   }
 
   private loadTradingAgentPosition(): void {

@@ -43,176 +43,187 @@
   }
 }
 
+// ─── Trading Agent FAB ──────────────────────────────────────────
 .trading-agent-float {
   position: fixed;
-  bottom: 2rem;
-  left: 2rem;
+  bottom: 1.5rem;
+  right: 1.5rem;
   z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
   cursor: grab;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  animation: fabEntrance 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s both;
 
   &:active {
     cursor: grabbing;
   }
 }
 
-.trading-agent-float-inner {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
+@keyframes fabEntrance {
+  from {
+    opacity: 0;
+    transform: scale(0.5) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
-.trading-agent-ghost-btn {
-  flex-shrink: 0;
+.trading-agent-fab {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(var(--palette-primary-500), 1);
+  color: #fff;
   text-decoration: none;
-  color: #1a1a1a;
-  transition: transform 0.2s ease, filter 0.2s ease;
-  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.12));
+  box-shadow:
+    0 4px 14px rgba(var(--palette-primary-500), 0.35),
+    0 2px 6px rgba(0, 0, 0, 0.1);
+  transition:
+    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.25s ease;
 
   &:hover {
-    transform: scale(1.06);
-    filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.18));
-    color: #1a1a1a;
+    transform: scale(1.1);
+    box-shadow:
+      0 6px 20px rgba(var(--palette-primary-500), 0.45),
+      0 3px 8px rgba(0, 0, 0, 0.12);
+    color: #fff;
+
+    .trading-agent-fab-ring {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  &:active {
+    transform: scale(0.95);
   }
 
   &:focus-visible {
-    outline: 2px solid #1a1a1a;
-    outline-offset: 3px;
-    border-radius: 50%;
+    outline: 2px solid rgba(var(--palette-primary-500), 1);
+    outline-offset: 4px;
   }
 }
 
-.trading-agent-ghost-icon {
-  width: 3rem;
-  height: 3.75rem;
+.trading-agent-fab-ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 2px solid rgba(var(--palette-primary-500), 0.3);
+  opacity: 0;
+  transform: scale(0.85);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+  animation: ringPulse 3s ease-in-out 1.5s 3;
+}
+
+@keyframes ringPulse {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+.trading-agent-fab-icon {
+  width: 30px;
+  height: 30px;
   display: block;
+  position: relative;
+  z-index: 1;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 
   .ghost-body {
     color: inherit;
   }
 
-  .ghost-antenna,
-  .ghost-antenna-dot {
-    color: inherit;
+  .ghost-eye {
+    --ghost-eye-fill: rgba(var(--palette-primary-500), 1);
   }
 }
 
-.trading-agent-greeting-bubble {
-  position: relative;
-  padding: 0.5rem 0.875rem;
-  margin-left: 0.25rem;
-  align-self: flex-start;
-  margin-top: 0.25rem;
-  background: rgba(var(--palette-primary-500), 0.1);
-  border: 1px solid rgba(var(--palette-primary-500), 0.25);
-  border-radius: 4px 14px 14px 14px;
-  max-width: 11rem;
+.trading-agent-fab-close-icon {
+  width: 24px;
+  height: 24px;
+  animation: fabCloseIconIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-.trading-agent-greeting-text {
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: 0.01em;
-  color: rgba(var(--dark-primary-text));
+@keyframes fabCloseIconIn {
+  from {
+    transform: rotate(-90deg) scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
 }
 
-.trading-agent-greeting-tail {
-  position: absolute;
-  left: -7px;
-  top: 1rem;
-  transform: rotate(-45deg);
-  width: 12px;
-  height: 12px;
-  background: rgba(var(--palette-primary-500), 0.1);
-  border-left: 1px solid rgba(var(--palette-primary-500), 0.25);
-  border-bottom: 1px solid rgba(var(--palette-primary-500), 0.25);
-  border-radius: 0 0 4px 0;
+.trading-agent-fab-open {
+  cursor: pointer;
+
+  .trading-agent-fab-ring {
+    opacity: 0 !important;
+    animation: none !important;
+  }
 }
 
-.trading-agent-float-hint {
-  font-size: 0.6875rem;
-  color: rgba(
-    var(--palette-foreground-secondary-text),
-    var(--palette-foreground-secondary-text-alpha)
-  );
-  opacity: 0.7;
-  letter-spacing: 0.04em;
+// When widget is open, the float container shouldn't show grab cursor
+.trading-agent-float:has(.trading-agent-fab-open) {
+  cursor: pointer;
+
+  &:active {
+    cursor: pointer;
+  }
 }
 
 @media (max-width: 575.98px) {
   .trading-agent-float {
-    bottom: 1.5rem;
-    left: 1rem;
+    bottom: 1rem;
+    right: 1rem;
   }
 
-  .trading-agent-float-inner {
-    gap: 0.375rem;
+  .trading-agent-fab {
+    width: 50px;
+    height: 50px;
   }
 
-  .trading-agent-ghost-icon {
-    width: 2.5rem;
-    height: 3.125rem;
-  }
-
-  .trading-agent-greeting-bubble {
-    padding: 0.4rem 0.75rem;
-    max-width: 9rem;
-    margin-top: 0.15rem;
-  }
-
-  .trading-agent-greeting-text {
-    font-size: 0.8125rem;
-  }
-
-  .trading-agent-greeting-tail {
-    top: 0.75rem;
+  .trading-agent-fab-icon {
+    width: 26px;
+    height: 26px;
   }
 }
 
 :host-context(.theme-dark) {
-  .trading-agent-ghost-btn {
-    color: #e0e0e0;
+  .trading-agent-fab {
+    background: rgba(var(--palette-primary-400), 1);
+    box-shadow:
+      0 4px 14px rgba(var(--palette-primary-400), 0.3),
+      0 2px 6px rgba(0, 0, 0, 0.25);
 
     &:hover {
-      color: #e0e0e0;
-    }
-
-    &:focus-visible {
-      outline-color: #e0e0e0;
+      box-shadow:
+        0 6px 20px rgba(var(--palette-primary-400), 0.4),
+        0 3px 8px rgba(0, 0, 0, 0.3);
     }
   }
 
-  .trading-agent-ghost-icon .ghost-eye {
-    fill: #1a1a1a;
+  .trading-agent-fab-ring {
+    border-color: rgba(var(--palette-primary-400), 0.35);
   }
 
-  .trading-agent-greeting-bubble {
-    background: rgba(var(--palette-primary-400), 0.12);
-    border-color: rgba(var(--palette-primary-400), 0.3);
-  }
-
-  .trading-agent-greeting-text {
-    color: rgba(var(--light-primary-text));
-  }
-
-  .trading-agent-greeting-tail {
-    background: rgba(var(--palette-primary-400), 0.12);
-    border-color: rgba(var(--palette-primary-400), 0.3);
-  }
-
-  .trading-agent-float-hint {
-    color: rgba(
-      var(--palette-foreground-secondary-text-dark),
-      var(--palette-foreground-secondary-text-dark-alpha)
-    );
+  .trading-agent-fab-icon .ghost-eye {
+    --ghost-eye-fill: rgba(var(--palette-primary-900), 1);
   }
 }
