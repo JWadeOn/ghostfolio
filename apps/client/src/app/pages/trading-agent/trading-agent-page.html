@@ -126,7 +126,7 @@
                 >
                   @if (msg.feedbackThankYou) {
                     <span class="feedback-thanks" i18n>Thanks for your feedback</span>
-                  } @else {
+                  } @else if (!msg.feedbackCorrectionOpen) {
                     <button
                       type="button"
                       class="feedback-btn"
@@ -153,6 +153,37 @@
                     </button>
                   }
                 </div>
+
+                <!-- Correction input (shown after thumbs down) -->
+                @if (msg.feedbackCorrectionOpen && !msg.feedbackThankYou) {
+                  <div class="feedback-correction">
+                    <textarea
+                      class="feedback-correction-input"
+                      [value]="msg.feedbackCorrection ?? ''"
+                      (input)="messages[$index] = { ...messages[$index], feedbackCorrection: $any($event.target).value }"
+                      placeholder="What should the response have been? (optional)"
+                      i18n-placeholder
+                      rows="2"
+                      [disabled]="msg.feedbackSubmitting"
+                    ></textarea>
+                    <div class="feedback-correction-actions">
+                      <button
+                        type="button"
+                        class="feedback-correction-btn feedback-correction-cancel"
+                        (click)="dismissCorrection($index)"
+                        [disabled]="msg.feedbackSubmitting"
+                        i18n
+                      >Cancel</button>
+                      <button
+                        type="button"
+                        class="feedback-correction-btn feedback-correction-submit"
+                        (click)="submitCorrection($index)"
+                        [disabled]="msg.feedbackSubmitting"
+                        i18n
+                      >Submit</button>
+                    </div>
+                  </div>
+                }
               }
             } @else {
               <div class="user-bubble">{{ msg.content }}</div>

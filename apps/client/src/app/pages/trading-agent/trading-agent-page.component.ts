@@ -85,6 +85,10 @@ interface ChatMessage {
   feedbackSubmitting?: boolean;
   /** Show "Thanks for your feedback" briefly after submit */
   feedbackThankYou?: boolean;
+  /** True when the correction text area is open (thumbs down flow) */
+  feedbackCorrectionOpen?: boolean;
+  /** User-provided correction text */
+  feedbackCorrection?: string;
 }
 
 interface ConversationHistoryResponse {
@@ -368,15 +372,58 @@ export class GfTradingAgentPageComponent implements OnInit, AfterViewInit, After
     ) {
       return;
     }
+
+    // Thumbs down: open correction input instead of submitting immediately
+    if (rating === 'thumbs_down') {
+      this.messages = this.messages.map((m, i) =>
+        i === index
+          ? { ...m, feedbackCorrectionOpen: true, feedbackCorrection: '' }
+          : m
+      );
+      this.changeDetectorRef.markForCheck();
+      return;
+    }
+
+    // Thumbs up: submit immediately
+    this._sendFeedback(index, rating);
+  }
+
+  public dismissCorrection(index: number): void {
+    this.messages = this.messages.map((m, i) =>
+      i === index
+        ? { ...m, feedbackCorrectionOpen: false, feedbackCorrection: '' }
+        : m
+    );
+    this.changeDetectorRef.markForCheck();
+  }
+
+  public submitCorrection(index: number): void {
+    const msg = this.messages[index];
+    if (!msg || msg.feedbackSubmitting || !this.threadId) {
+      return;
+    }
+    this._sendFeedback(index, 'thumbs_down', msg.feedbackCorrection?.trim() || undefined);
+  }
+
+  private _sendFeedback(
+    index: number,
+    rating: 'thumbs_up' | 'thumbs_down',
+    correction?: string
+  ): void {
     this.messages = this.messages.map((m, i) =>
       i === index ? { ...m, feedbackSubmitting: true } : m
     );
     this.changeDetectorRef.markForCheck();
 
+    const body: Record<string, string> = { thread_id: this.threadId!, rating };
+    if (correction) {
+      body['correction'] = correction;
+    }
+
     this.http
       .post<{ status: string; feedback_id: string }>(
         '/api/v1/trading-agent/feedback',
-        { thread_id: this.threadId, rating }
+        body
       )
       .subscribe({
         next: () => {
@@ -387,12 +434,12 @@ export class GfTradingAgentPageComponent implements OnInit, AfterViewInit, After
                     ...m,
                     feedbackRating: rating,
                     feedbackSubmitting: false,
+                    feedbackCorrectionOpen: false,
                     feedbackThankYou: true
                   }
                 : m
             );
             this.changeDetectorRef.markForCheck();
-            // Hide "Thanks" after 3s
             setTimeout(() => {
               this.ngZone.run(() => {
                 this.messages = this.messages.map((m, i) =>

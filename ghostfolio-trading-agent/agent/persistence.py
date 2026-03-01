@@ -135,6 +135,78 @@ async def get_conversation_history(
     return []
 
 
+async def setup_feedback_table() -> None:
+    """Create the feedback table if it does not exist."""
+    if _pg_conn is None:
+        return
+    try:
+        await _pg_conn.execute("""
+            CREATE TABLE IF NOT EXISTS feedback (
+                id SERIAL PRIMARY KEY,
+                thread_id TEXT NOT NULL,
+                rating TEXT NOT NULL,
+                correction TEXT,
+                comment TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        logger.info("Feedback table ready")
+    except Exception as exc:
+        logger.error("Failed to create feedback table: %s", exc)
+
+
+async def insert_feedback(
+    thread_id: str,
+    rating: str,
+    correction: str | None = None,
+    comment: str | None = None,
+) -> int | None:
+    """Insert a feedback row and return its id."""
+    if _pg_conn is None:
+        logger.warning("No Postgres connection — feedback not stored")
+        return None
+    try:
+        cur = await _pg_conn.execute(
+            """
+            INSERT INTO feedback (thread_id, rating, correction, comment)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
+            """,
+            (thread_id, rating, correction, comment),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else None
+    except Exception as exc:
+        logger.error("Failed to insert feedback: %s", exc)
+        return None
+
+
+async def get_feedback_summary() -> dict:
+    """Return aggregate feedback counts from Postgres."""
+    if _pg_conn is None:
+        return {"total": 0, "thumbs_up": 0, "thumbs_down": 0, "with_corrections": 0}
+    try:
+        cur = await _pg_conn.execute("""
+            SELECT
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE rating = 'thumbs_up') AS thumbs_up,
+                COUNT(*) FILTER (WHERE rating = 'thumbs_down') AS thumbs_down,
+                COUNT(*) FILTER (WHERE correction IS NOT NULL AND correction != '') AS with_corrections
+            FROM feedback
+        """)
+        row = await cur.fetchone()
+        if row:
+            return {
+                "total": row[0],
+                "thumbs_up": row[1],
+                "thumbs_down": row[2],
+                "with_corrections": row[3],
+            }
+    except Exception as exc:
+        logger.error("Failed to query feedback summary: %s", exc)
+    return {"total": 0, "thumbs_up": 0, "thumbs_down": 0, "with_corrections": 0}
+
+
 async def shutdown() -> None:
     """Gracefully close Postgres and Redis connections."""
     global _checkpointer, _redis, _pg_conn

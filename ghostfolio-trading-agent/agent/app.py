@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -25,8 +22,11 @@ from agent.graph import build_agent_graph
 from agent.persistence import (
     cache_messages,
     get_conversation_history,
+    get_feedback_summary,
     init_checkpointer,
     init_redis,
+    insert_feedback,
+    setup_feedback_table,
     shutdown as persistence_shutdown,
 )
 from agent.tools.regime import detect_regime
@@ -76,6 +76,7 @@ async def lifespan(application: FastAPI):
             logger.error("Failed to initialise Postgres checkpointer: %s", exc)
 
     await init_redis()
+    await setup_feedback_table()
 
     _agent_graph = build_agent_graph(checkpointer=checkpointer)
     logger.info("Agent graph compiled (checkpointer=%s)", type(checkpointer).__name__ if checkpointer else "None")
@@ -262,8 +263,6 @@ async def get_regime():
 
 # --- Feedback ---
 
-_FEEDBACK_DIR = Path(__file__).resolve().parent.parent / "data" / "feedback"
-
 
 class FeedbackRequest(BaseModel):
     thread_id: str
@@ -275,47 +274,22 @@ class FeedbackRequest(BaseModel):
 @app.post("/api/feedback")
 async def submit_feedback(req: FeedbackRequest):
     """Capture user feedback (thumbs up/down, optional correction) for a thread."""
-    _FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
-    entry = {
-        "thread_id": req.thread_id,
-        "rating": req.rating,
-        "correction": req.correction,
-        "comment": req.comment,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-    path = _FEEDBACK_DIR / f"{req.thread_id}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
-    with open(path, "w") as f:
-        json.dump(entry, f, indent=2)
-    logger.info("Feedback recorded: thread=%s rating=%s", req.thread_id, req.rating)
-    return {"status": "ok", "feedback_id": path.stem}
+    feedback_id = await insert_feedback(
+        thread_id=req.thread_id,
+        rating=req.rating,
+        correction=req.correction,
+        comment=req.comment,
+    )
+    if feedback_id is None:
+        raise HTTPException(status_code=503, detail="Feedback storage unavailable")
+    logger.info("Feedback recorded: thread=%s rating=%s id=%s", req.thread_id, req.rating, feedback_id)
+    return {"status": "ok", "feedback_id": str(feedback_id)}
 
 
 @app.get("/api/feedback/summary")
 async def feedback_summary():
     """Return aggregate feedback counts."""
-    if not _FEEDBACK_DIR.exists():
-        return {"total": 0, "thumbs_up": 0, "thumbs_down": 0, "with_corrections": 0}
-    files = list(_FEEDBACK_DIR.glob("*.json"))
-    thumbs_up = 0
-    thumbs_down = 0
-    corrections = 0
-    for f in files:
-        try:
-            data = json.loads(f.read_text())
-            if data.get("rating") == "thumbs_up":
-                thumbs_up += 1
-            elif data.get("rating") == "thumbs_down":
-                thumbs_down += 1
-            if data.get("correction"):
-                corrections += 1
-        except Exception:
-            continue
-    return {
-        "total": len(files),
-        "thumbs_up": thumbs_up,
-        "thumbs_down": thumbs_down,
-        "with_corrections": corrections,
-    }
+    return await get_feedback_summary()
 
 
 class ScanRequest(BaseModel):
