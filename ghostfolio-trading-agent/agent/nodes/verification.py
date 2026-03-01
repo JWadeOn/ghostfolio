@@ -103,6 +103,9 @@ def _check_facts(
 ) -> list[str]:
     """Fact-check numbers in synthesis against tool results. Relaxed for intents where numbers are derived or user-provided."""
     issues = []
+    # Nothing to fact-check if no tools were called (e.g. no-tool tax queries)
+    if not tool_results:
+        return issues
     # Skip fact-check for intents where derived arithmetic is inherent
     # signal_archaeology: cites historical highs/lows, derived indicator values from deep in time series
     if intent in (
@@ -403,7 +406,7 @@ def _check_authoritative_consistency(synthesis: str, tool_results: dict) -> list
         for window in wrong_windows:
             try:
                 days = int(window)
-                if days not in (30, 60, 61):
+                if days not in (30, 60, 61, 90):
                     # 30 is correct window each side; 60/61 is the total window — both acceptable
                     issues.append(
                         f"Synthesis mentions wash sale with {days}-day window; "
