@@ -28,6 +28,7 @@
 - [x] **Integration smoke test** — `tests/eval/run_smoke_test.py` built; runs eval cases against live Railway deployment via Ghostfolio proxy with JWT auth
 - [x] **Output validation (schema)** — Pydantic v2 `AgentResponse` model validates all output in `format_output_node()` and error handler; fallback on validation failure
 - [x] **Human-in-the-loop escalation** — Low-confidence/guardrail/guarantee-language responses flagged `escalated: true`, queued in Postgres with review endpoints (`GET /api/escalations`, `POST /api/escalations/{id}/resolve`, `GET /api/escalations/summary`)
+- [x] **Seed default admin & demo users** — `prisma/seed.mts` now creates admin user (ANONYMOUS provider, ADMIN role, hashed access token), demo user (DEMO role), accounts, settings, and `DEMO_USER_ID`/`DEMO_ACCOUNT_ID` properties. Enables out-of-the-box login and "Try Demo" button. Idempotent via upserts. Reads `ACCESS_TOKEN_SALT` and optional `DEFAULT_ADMIN_TOKEN` from env.
 
 ---
 

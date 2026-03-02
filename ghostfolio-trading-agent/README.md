@@ -157,6 +157,14 @@ npm run database:push
 npm run database:seed
 ```
 
+The seed script (`prisma/seed.mts`) creates:
+
+- **Admin user** — role `ADMIN`, provider `ANONYMOUS`. Log in with the token from `DEFAULT_ADMIN_TOKEN` env var (defaults to `ghostfolio-admin-default-token`). The token is hashed using `ACCESS_TOKEN_SALT` before storage, matching Ghostfolio's auth flow.
+- **Demo user** — role `DEMO`, with `DEMO_USER_ID` and `DEMO_ACCOUNT_ID` properties set so the "Try Demo" button works on the login page.
+- **Tags** — `EMERGENCY_FUND`, `EXCLUDE_FROM_ANALYSIS`, and `DEMO`.
+
+The seed is idempotent (all upserts) and runs automatically during `docker/entrypoint.sh`. To use a custom admin token, set `DEFAULT_ADMIN_TOKEN` in your environment before seeding.
+
 ### 4. Start the API (port 3333)
 
 From the monorepo root:
@@ -179,7 +187,8 @@ Then open the URL the dev server prints (typically **https://localhost:4200** �
 
 ### 6. Sign in and open Trading Assistant
 
-- Register or sign in (e.g. with a **security token** from Ghostfolio Settings → Account).
+- Sign in with the default admin token: `ghostfolio-admin-default-token` (or the value of `DEFAULT_ADMIN_TOKEN` if you set a custom one). Use the **Security Token** login on the Ghostfolio sign-in page.
+- Alternatively, click **Try Demo** on the login page to use the pre-seeded demo account.
 - In the top nav you should see **Portfolio**, **Accounts**, **Resources**, and **Trading Assistant**.
 - Click **Trading Assistant** to use the chat.
 
