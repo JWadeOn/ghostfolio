@@ -439,10 +439,10 @@ All configuration is managed through environment variables (or a `.env` file). S
 | `LANGCHAIN_API_KEY`       | No       | —                          | LangSmith API key                                       |
 | `LANGCHAIN_PROJECT`       | No       | `ghostfolio-trading-agent` | LangSmith project name                                  |
 
-**Getting the Ghostfolio access token:** Use your **security token** (the one from **Settings → Account** in Ghostfolio). Put it in `ghostfolio-trading-agent/.env` as `GHOSTFOLIO_ACCESS_TOKEN=<your-security-token>`. The agent automatically exchanges this for a JWT when calling portfolio/account endpoints, so you do **not** need to paste a JWT.
+**Getting the Ghostfolio access token:** After seeding, the default admin token is `ghostfolio-admin-default-token` (or the value of `DEFAULT_ADMIN_TOKEN`). Set `GHOSTFOLIO_ACCESS_TOKEN=ghostfolio-admin-default-token` in `ghostfolio-trading-agent/.env`. The agent automatically exchanges this for a JWT when calling portfolio/account endpoints, so you do **not** need to paste a JWT.
 
-- **If you already saved your token:** use that value for `GHOSTFOLIO_ACCESS_TOKEN`. Ghostfolio never shows the token again after creation.
-- **If you don’t have it:** In Ghostfolio go to **Settings → Account → Generate a new security token**, copy it immediately (it’s shown only once), then set it in `.env`. Generating a new one invalidates the previous token.
+- **Default setup:** Use the seeded admin token directly — no manual token generation needed.
+- **Custom token:** If you generated a new token in Ghostfolio (Settings → Account), use that value instead. Ghostfolio never shows the token again after creation.
 
 Without a valid token, requests to `/api/v1/portfolio/*` and `/api/v1/account` return **401 Unauthorized**.
 
