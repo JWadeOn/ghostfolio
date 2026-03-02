@@ -80,6 +80,8 @@ export class GfAppComponent implements OnDestroy, OnInit {
   public user: User;
   public internalRoutes = internalRoutes;
   public isChatWidgetOpen = false;
+  public showGreetingBubble = false;
+  private greetingBubbleTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Draggable widget position (px from left/top). When null, use CSS default (bottom-left). */
   public tradingAgentWidgetPosition: { x: number; y: number } | null = null;
@@ -138,7 +140,7 @@ export class GfAppComponent implements OnDestroy, OnInit {
   }
 
   public getTradingAgentWidgetStyle(): Record<string, string> {
-    // When chat widget is open, snap FAB back to default bottom-right
+    // When chat widget is open, snap FAB back to default bottom-left
     // so the panel sits cleanly above it
     if (this.isChatWidgetOpen) return {};
     const pos = this.tradingAgentWidgetPosition;
@@ -244,6 +246,7 @@ export class GfAppComponent implements OnDestroy, OnInit {
       this.wasDragging = false;
       return;
     }
+    this.dismissGreetingBubble();
     this.isChatWidgetOpen = !this.isChatWidgetOpen;
     this.changeDetectorRef.markForCheck();
   }
@@ -253,22 +256,37 @@ export class GfAppComponent implements OnDestroy, OnInit {
     this.changeDetectorRef.markForCheck();
   }
 
+  private startGreetingBubble(): void {
+    // Show bubble 1s after page load (after FAB entrance animation)
+    setTimeout(() => {
+      this.showGreetingBubble = true;
+      this.changeDetectorRef.markForCheck();
+
+      // Auto-dismiss after 6 seconds
+      this.greetingBubbleTimer = setTimeout(() => {
+        this.dismissGreetingBubble();
+      }, 6000);
+    }, 1000);
+  }
+
+  private dismissGreetingBubble(): void {
+    this.showGreetingBubble = false;
+    if (this.greetingBubbleTimer) {
+      clearTimeout(this.greetingBubbleTimer);
+      this.greetingBubbleTimer = null;
+    }
+    this.changeDetectorRef.markForCheck();
+  }
+
   private loadTradingAgentPosition(): void {
+    // Clear any stale saved position so the CSS default (bottom-left) is used.
+    // The drag system will save a new position if the user drags the FAB.
     try {
-      const raw = this.document.defaultView?.localStorage?.getItem(this.TRADING_AGENT_POSITION_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as { x: number; y: number };
-        const padding = 16;
-        const maxW = this.document.documentElement.clientWidth - 200;
-        const maxH = this.document.documentElement.clientHeight - 120;
-        this.tradingAgentWidgetPosition = {
-          x: Math.max(padding, Math.min(maxW, parsed.x)),
-          y: Math.max(padding, Math.min(maxH, parsed.y))
-        };
-      }
+      this.document.defaultView?.localStorage?.removeItem(this.TRADING_AGENT_POSITION_KEY);
     } catch {
       // ignore
     }
+    this.tradingAgentWidgetPosition = null;
   }
 
   private saveTradingAgentPosition(): void {
@@ -288,6 +306,7 @@ export class GfAppComponent implements OnDestroy, OnInit {
     this.info = this.dataService.fetchInfo();
     this.updateRouteFromRouter();
     this.loadTradingAgentPosition();
+    this.startGreetingBubble();
 
     this.impersonationStorageService
       .onChangeHasImpersonation()

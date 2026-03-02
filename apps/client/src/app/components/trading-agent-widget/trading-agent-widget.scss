@@ -13,8 +13,8 @@
 
 .widget-panel {
   position: fixed;
-  bottom: calc(1.5rem + 56px + 14px);
-  right: 1.5rem;
+  bottom: calc(1.5rem + 96px + 14px);
+  left: 1.5rem;
   width: 400px;
   height: 550px;
   max-height: calc(100vh - 130px);
@@ -373,9 +373,9 @@
 
 @media (max-width: 575.98px) {
   .widget-panel {
-    bottom: calc(1rem + 50px + 12px);
-    right: .5rem;
+    bottom: calc(1rem + 80px + 12px);
     left: .5rem;
+    right: .5rem;
     width: auto;
     height: calc(100vh - 90px);
     max-height: none;

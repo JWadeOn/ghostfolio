@@ -124,17 +124,17 @@ async function main() {
     update: {}
   });
 
-  // --- Demo properties (enables "Try Demo" button) ---
+  // --- Demo properties (point demo login at admin user so instructors see agent portfolio) ---
   await prisma.property.upsert({
     where: { key: 'DEMO_USER_ID' },
-    create: { key: 'DEMO_USER_ID', value: DEMO_USER_ID },
-    update: { value: DEMO_USER_ID }
+    create: { key: 'DEMO_USER_ID', value: ADMIN_USER_ID },
+    update: { value: ADMIN_USER_ID }
   });
 
   await prisma.property.upsert({
     where: { key: 'DEMO_ACCOUNT_ID' },
-    create: { key: 'DEMO_ACCOUNT_ID', value: DEMO_ACCOUNT_ID },
-    update: { value: DEMO_ACCOUNT_ID }
+    create: { key: 'DEMO_ACCOUNT_ID', value: ADMIN_ACCOUNT_ID },
+    update: { value: ADMIN_ACCOUNT_ID }
   });
 
   console.log('Seed completed successfully.');

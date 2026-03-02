@@ -64,6 +64,14 @@
     (touchstart)="onTradingAgentWidgetPointerDown($event)"
     role="presentation"
   >
+    @if (showGreetingBubble && !isChatWidgetOpen) {
+      <div class="greeting-bubble" (click)="onTradingAgentFabClick($event)">
+        <span class="greeting-text" i18n>Ask me anything</span>
+        <svg class="greeting-tail" width="12" height="8" viewBox="0 0 12 8" aria-hidden="true">
+          <path d="M6 8L0 0h12z" fill="currentColor"/>
+        </svg>
+      </div>
+    }
     <button
       type="button"
       class="trading-agent-fab"
@@ -73,7 +81,6 @@
       title="Trading Assistant"
       i18n-title
     >
-      <span class="trading-agent-fab-ring"></span>
       @if (isChatWidgetOpen) {
         <svg class="trading-agent-fab-icon trading-agent-fab-close-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
