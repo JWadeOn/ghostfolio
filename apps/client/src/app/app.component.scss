@@ -89,6 +89,12 @@
   &:hover {
     transform: scale(1.15);
     color: #000;
+
+    .trading-agent-fab-icon {
+      filter:
+        drop-shadow(0 0 12px rgba(54, 207, 204, 0.7))
+        drop-shadow(0 0 30px rgba(54, 207, 204, 0.4));
+    }
   }
 
   &:active {
@@ -112,13 +118,16 @@
   position: relative;
   z-index: 1;
   transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  filter:
+    drop-shadow(0 0 8px rgba(54, 207, 204, 0.5))
+    drop-shadow(0 0 20px rgba(54, 207, 204, 0.3));
 
   .ghost-body {
     color: inherit;
   }
 
   .ghost-eye {
-    --ghost-eye-fill: #fff;
+    --ghost-eye-fill: rgb(54, 207, 204);
   }
 }
 
@@ -216,8 +225,20 @@
     color: #fff;
   }
 
-  .trading-agent-fab-icon .ghost-eye {
-    --ghost-eye-fill: #000;
+  .trading-agent-fab-icon {
+    filter:
+      drop-shadow(0 0 10px rgba(54, 207, 204, 0.6))
+      drop-shadow(0 0 25px rgba(54, 207, 204, 0.35));
+
+    .ghost-eye {
+      --ghost-eye-fill: rgb(54, 207, 204);
+    }
+  }
+
+  .trading-agent-fab:hover .trading-agent-fab-icon {
+    filter:
+      drop-shadow(0 0 14px rgba(54, 207, 204, 0.8))
+      drop-shadow(0 0 35px rgba(54, 207, 204, 0.5));
   }
 
   .greeting-bubble {
