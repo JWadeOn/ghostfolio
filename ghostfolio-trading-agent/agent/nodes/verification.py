@@ -229,8 +229,39 @@ def _check_price_quote_freshness(
     return issues
 
 
+def _portfolio_is_empty(tool_results: dict) -> bool:
+    """Check if a portfolio snapshot returned zero holdings."""
+    snapshot = tool_results.get("get_portfolio_snapshot")
+    if not snapshot or not isinstance(snapshot, dict):
+        return False
+    holdings = snapshot.get("holdings")
+    if isinstance(holdings, list) and len(holdings) == 0:
+        return True
+    summary = snapshot.get("summary")
+    if isinstance(summary, dict) and summary.get("holding_count", -1) == 0:
+        return True
+    return False
+
+
+def _market_data_has_prices(tool_results: dict) -> bool:
+    """Check if market data returned at least one concrete price."""
+    md = tool_results.get("get_market_data")
+    if not md or not isinstance(md, dict):
+        return False
+    for symbol, data in md.items():
+        if isinstance(data, list) and data:
+            last = data[-1]
+            if isinstance(last, dict) and last.get("close") is not None:
+                return True
+    return False
+
+
 def _compute_confidence(state: AgentState) -> int:
-    """Compute confidence score 0-100 based on multiple factors."""
+    """Compute confidence score 0-100 based on multiple factors.
+
+    Rewards concrete, data-backed answers and penalises vacuous responses
+    where tools succeeded but returned empty/unusable data.
+    """
     score = 50  # Base
 
     tool_results = state.get("tool_results", {})
@@ -254,6 +285,33 @@ def _compute_confidence(state: AgentState) -> int:
     )
     if intent in data_intents and successful_tools > 0:
         score += 15
+
+    # --- Data-quality adjustments ---
+
+    # Empty portfolio: the tools "succeeded" but there's nothing to analyse.
+    # Penalise portfolio-dependent intents that got no holdings.
+    portfolio_intents = (
+        "portfolio_overview", "performance_review", "risk_check",
+        "portfolio_health", "tax_implications", "compliance",
+    )
+    if _portfolio_is_empty(tool_results):
+        if intent in portfolio_intents:
+            score -= 20  # can't meaningfully answer
+        else:
+            score -= 10  # less relevant but still thin data
+
+    # Market data: reward concrete prices for price-dependent intents
+    price_intents = (
+        "price_quote", "risk_check", "opportunity_scan",
+        "chart_validation", "signal_archaeology",
+    )
+    if intent in price_intents:
+        if _market_data_has_prices(tool_results):
+            score += 10  # concrete answer backed by real prices
+        elif "get_market_data" in tool_results:
+            score -= 10  # tool ran but returned no usable prices
+
+    # --- End data-quality adjustments ---
 
     if regime and "composite" in regime:
         confidence = regime.get("confidence", 0)
