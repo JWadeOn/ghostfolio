@@ -19,13 +19,19 @@ from agent.config import get_settings
 from agent.input_validation import MAX_MESSAGE_LENGTH, validate_chat_message
 from agent.ghostfolio_client import GhostfolioClient
 from agent.graph import build_agent_graph
+from agent.schemas import AgentResponse, Observability
 from agent.persistence import (
     cache_messages,
     get_conversation_history,
+    get_escalation_summary,
     get_feedback_summary,
+    get_pending_escalations,
     init_checkpointer,
     init_redis,
+    insert_escalation,
     insert_feedback,
+    resolve_escalation,
+    setup_escalation_table,
     setup_feedback_table,
     shutdown as persistence_shutdown,
 )
@@ -77,6 +83,7 @@ async def lifespan(application: FastAPI):
 
     await init_redis()
     await setup_feedback_table()
+    await setup_escalation_table()
 
     _agent_graph = build_agent_graph(checkpointer=checkpointer)
     logger.info("Agent graph compiled (checkpointer=%s)", type(checkpointer).__name__ if checkpointer else "None")
@@ -140,6 +147,42 @@ def _make_json_serializable(obj: Any) -> Any:
     return obj
 
 
+_TRADE_INTENTS = frozenset({
+    "risk_check", "create_activity", "opportunity_scan", "portfolio_health",
+})
+_GUARANTEE_PATTERNS = ("guaranteed", "risk-free", "no risk", "cannot lose", "will definitely")
+
+
+def _check_escalation(response_data: dict, settings: Any) -> str | None:
+    """Return an escalation reason string if the response should be flagged, else None."""
+    if not settings.escalation_enabled:
+        return None
+
+    reasons: list[str] = []
+
+    confidence = response_data.get("confidence", 50)
+    if confidence < settings.escalation_confidence_threshold:
+        reasons.append(f"low_confidence ({confidence})")
+
+    intent = response_data.get("intent", "")
+    warnings = response_data.get("warnings", [])
+    if intent in _TRADE_INTENTS and warnings:
+        for w in warnings:
+            if "violation" in w.lower() or "guardrail" in w.lower():
+                reasons.append("guardrail_violation")
+                break
+
+    summary = response_data.get("summary", "").lower()
+    warning_text = " ".join(w.lower() for w in warnings)
+    combined = summary + " " + warning_text
+    for pattern in _GUARANTEE_PATTERNS:
+        if pattern in combined:
+            reasons.append("guarantee_language")
+            break
+
+    return "; ".join(reasons) if reasons else None
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Main chat endpoint — processes natural language queries through the agent."""
@@ -189,6 +232,21 @@ async def chat(request: ChatRequest):
 
         response_data = _make_json_serializable(response_data)
 
+        # Escalation check
+        settings = get_settings()
+        escalation_reason = _check_escalation(response_data, settings)
+        if escalation_reason:
+            response_data["escalated"] = True
+            response_data["escalation_reason"] = escalation_reason
+            await insert_escalation(
+                thread_id=thread_id,
+                confidence=response_data.get("confidence", 0),
+                intent=response_data.get("intent", "unknown"),
+                reason=escalation_reason,
+                response_snapshot=response_data,
+            )
+            logger.info("Escalation triggered: thread=%s reason=%s", thread_id, escalation_reason)
+
         logger.info(
             "Request completed: thread=%s latency=%.2fs tokens=%s",
             thread_id,
@@ -199,22 +257,20 @@ async def chat(request: ChatRequest):
         return ChatResponse(response=response_data, thread_id=thread_id)
     except Exception as e:
         logger.error("Agent error: %s", e, exc_info=True)
+        error_response = AgentResponse(
+            summary=f"An error occurred: {str(e)}",
+            confidence=0,
+            intent="error",
+            warnings=[str(e)],
+            disclaimer="This is market analysis, not financial advice.",
+            observability=Observability(
+                error_log=[
+                    {"node": "app", "error": str(e), "category": "unknown_error"}
+                ],
+            ),
+        )
         return ChatResponse(
-            response={
-                "summary": f"An error occurred: {str(e)}",
-                "confidence": 0,
-                "intent": "error",
-                "data": {},
-                "citations": [],
-                "warnings": [str(e)],
-                "tools_used": [],
-                "disclaimer": "This is market analysis, not financial advice.",
-                "observability": {
-                    "error_log": [
-                        {"node": "app", "error": str(e), "category": "unknown_error"}
-                    ],
-                },
-            },
+            response=error_response.model_dump(),
             thread_id=thread_id,
         )
 
@@ -290,6 +346,34 @@ async def submit_feedback(req: FeedbackRequest):
 async def feedback_summary():
     """Return aggregate feedback counts."""
     return await get_feedback_summary()
+
+
+# --- Escalation ---
+
+
+@app.get("/api/escalations")
+async def list_escalations(limit: int = 50):
+    """Return pending escalations for review."""
+    return await get_pending_escalations(limit=limit)
+
+
+class ResolveRequest(BaseModel):
+    reviewer_notes: str
+
+
+@app.post("/api/escalations/{escalation_id}/resolve")
+async def resolve_escalation_endpoint(escalation_id: int, req: ResolveRequest):
+    """Resolve a pending escalation with reviewer notes."""
+    resolved = await resolve_escalation(escalation_id, req.reviewer_notes)
+    if not resolved:
+        raise HTTPException(status_code=404, detail="Escalation not found or already resolved")
+    return {"status": "ok", "escalation_id": escalation_id}
+
+
+@app.get("/api/escalations/summary")
+async def escalation_summary():
+    """Return aggregate escalation counts."""
+    return await get_escalation_summary()
 
 
 class ScanRequest(BaseModel):

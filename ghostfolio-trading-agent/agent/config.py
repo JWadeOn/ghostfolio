@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     agent_port: int = 8000
     cache_ttl_seconds: int = 300
 
+    # Escalation
+    escalation_confidence_threshold: int = 30
+    escalation_enabled: bool = True
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

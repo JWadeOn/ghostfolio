@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from agent.config import get_settings
+from agent.schemas import AgentResponse
 from agent.state import AgentState
 from agent.authoritative_sources import get_sources_for_tools
 from agent.observability import aggregate_token_usage, make_trace_entry
@@ -243,5 +244,27 @@ def format_output_node(state: AgentState) -> dict[str, Any]:
         "disclaimer": DISCLAIMER,
         "observability": observability,
     }
+
+    # Validate through Pydantic schema
+    try:
+        validated = AgentResponse(**response)
+        response = validated.model_dump()
+    except Exception as exc:
+        logger.error("Output validation failed: %s", exc)
+        fallback_warnings = list(warnings) if warnings else []
+        fallback_warnings.append(f"Output validation error: {exc}")
+        fallback = AgentResponse(
+            summary=synthesis or "Response could not be fully validated.",
+            confidence=max(0, min(100, confidence)) if isinstance(confidence, (int, float)) else 0,
+            intent=intent or "error",
+            data={},
+            citations=[],
+            warnings=fallback_warnings,
+            tools_used=tools_called,
+            authoritative_sources=[],
+            disclaimer=DISCLAIMER,
+            observability=observability,
+        )
+        response = fallback.model_dump()
 
     return {"response": response}

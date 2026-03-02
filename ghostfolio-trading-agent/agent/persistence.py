@@ -207,6 +207,142 @@ async def get_feedback_summary() -> dict:
     return {"total": 0, "thumbs_up": 0, "thumbs_down": 0, "with_corrections": 0}
 
 
+async def setup_escalation_table() -> None:
+    """Create the escalation table if it does not exist."""
+    if _pg_conn is None:
+        return
+    try:
+        await _pg_conn.execute("""
+            CREATE TABLE IF NOT EXISTS escalations (
+                id SERIAL PRIMARY KEY,
+                thread_id TEXT NOT NULL,
+                confidence INT NOT NULL,
+                intent TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                response_snapshot JSONB,
+                status TEXT NOT NULL DEFAULT 'pending',
+                reviewer_notes TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                resolved_at TIMESTAMPTZ
+            )
+        """)
+        await _pg_conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_escalations_pending
+            ON escalations (created_at)
+            WHERE status = 'pending'
+        """)
+        logger.info("Escalation table ready")
+    except Exception as exc:
+        logger.error("Failed to create escalation table: %s", exc)
+
+
+async def insert_escalation(
+    thread_id: str,
+    confidence: int,
+    intent: str,
+    reason: str,
+    response_snapshot: dict | None = None,
+) -> int | None:
+    """Insert an escalation row and return its id."""
+    if _pg_conn is None:
+        logger.warning("No Postgres connection — escalation not stored")
+        return None
+    try:
+        cur = await _pg_conn.execute(
+            """
+            INSERT INTO escalations (thread_id, confidence, intent, reason, response_snapshot)
+            VALUES (%s, %s, %s, %s, %s::jsonb)
+            RETURNING id
+            """,
+            (thread_id, confidence, intent, reason,
+             json.dumps(response_snapshot) if response_snapshot else None),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else None
+    except Exception as exc:
+        logger.error("Failed to insert escalation: %s", exc)
+        return None
+
+
+async def get_pending_escalations(limit: int = 50) -> list[dict]:
+    """Return pending escalation rows ordered by creation time."""
+    if _pg_conn is None:
+        return []
+    try:
+        cur = await _pg_conn.execute(
+            """
+            SELECT id, thread_id, confidence, intent, reason,
+                   response_snapshot, status, reviewer_notes, created_at
+            FROM escalations
+            WHERE status = 'pending'
+            ORDER BY created_at ASC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        rows = await cur.fetchall()
+        return [
+            {
+                "id": r[0],
+                "thread_id": r[1],
+                "confidence": r[2],
+                "intent": r[3],
+                "reason": r[4],
+                "response_snapshot": r[5],
+                "status": r[6],
+                "reviewer_notes": r[7],
+                "created_at": r[8].isoformat() if r[8] else None,
+            }
+            for r in rows
+        ]
+    except Exception as exc:
+        logger.error("Failed to query pending escalations: %s", exc)
+        return []
+
+
+async def resolve_escalation(escalation_id: int, reviewer_notes: str) -> bool:
+    """Resolve an escalation by setting status to 'resolved' with notes."""
+    if _pg_conn is None:
+        return False
+    try:
+        cur = await _pg_conn.execute(
+            """
+            UPDATE escalations
+            SET status = 'resolved', reviewer_notes = %s, resolved_at = NOW()
+            WHERE id = %s AND status = 'pending'
+            """,
+            (reviewer_notes, escalation_id),
+        )
+        return cur.rowcount > 0
+    except Exception as exc:
+        logger.error("Failed to resolve escalation %s: %s", escalation_id, exc)
+        return False
+
+
+async def get_escalation_summary() -> dict:
+    """Return aggregate escalation counts from Postgres."""
+    if _pg_conn is None:
+        return {"total": 0, "pending": 0, "resolved": 0}
+    try:
+        cur = await _pg_conn.execute("""
+            SELECT
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE status = 'pending') AS pending,
+                COUNT(*) FILTER (WHERE status = 'resolved') AS resolved
+            FROM escalations
+        """)
+        row = await cur.fetchone()
+        if row:
+            return {
+                "total": row[0],
+                "pending": row[1],
+                "resolved": row[2],
+            }
+    except Exception as exc:
+        logger.error("Failed to query escalation summary: %s", exc)
+    return {"total": 0, "pending": 0, "resolved": 0}
+
+
 async def shutdown() -> None:
     """Gracefully close Postgres and Redis connections."""
     global _checkpointer, _redis, _pg_conn
