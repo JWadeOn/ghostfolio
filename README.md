@@ -17,6 +17,8 @@
 
 **Ghostfolio** is an open source wealth management software built with web technology. The application empowers busy people to keep track of stocks, ETFs or cryptocurrencies and make solid, data-driven investment decisions. The software is designed for personal use in continuous operation.
 
+> **Portfolio Intelligence Agent** — This fork adds an AI-powered portfolio intelligence assistant built with LangGraph and Claude. It provides conversational portfolio analysis, trade evaluation, tax/compliance checks, and market data through an in-app chat UI. See [`ghostfolio-trading-agent/README.md`](./ghostfolio-trading-agent/README.md) for setup, architecture, and usage.
+
 <div align="center">
 
 [<img src="./apps/client/src/assets/images/video-preview.jpg" width="600" alt="Preview image of the Ghostfolio video trailer">](https://www.youtube.com/watch?v=yY6ObSQVJZk)

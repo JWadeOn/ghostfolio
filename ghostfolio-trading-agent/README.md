@@ -95,9 +95,6 @@ Or ask about risk, taxes, or performance: _"Can I buy $10,000 of TSLA?"_, _"How 
 ```bash
 pip install -r requirements.txt
 uvicorn agent.app:app --host 0.0.0.0 --port 8000
-or
-python3 -m uvicorn agent.app:app
- --host 0.0.0.0 --port 8000
 ```
 
 ---
@@ -160,7 +157,7 @@ npm run database:seed
 The seed script (`prisma/seed.mts`) creates:
 
 - **Admin user** — role `ADMIN`, provider `ANONYMOUS`. Log in with the token from `DEFAULT_ADMIN_TOKEN` env var (defaults to `ghostfolio-admin-default-token`). The token is hashed using `ACCESS_TOKEN_SALT` before storage, matching Ghostfolio's auth flow.
-- **Demo user** — role `DEMO`, with `DEMO_USER_ID` and `DEMO_ACCOUNT_ID` properties set so the "Try Demo" button works on the login page.
+- **Demo user** — role `DEMO`. The `DEMO_USER_ID` and `DEMO_ACCOUNT_ID` properties are pointed at the **admin user**, so clicking "Try Demo" on the login page logs you into the admin account with the trading agent's portfolio data.
 - **Tags** — `EMERGENCY_FUND`, `EXCLUDE_FROM_ANALYSIS`, and `DEMO`.
 
 The seed is idempotent (all upserts) and runs automatically during `docker/entrypoint.sh`. To use a custom admin token, set `DEFAULT_ADMIN_TOKEN` in your environment before seeding.
@@ -188,7 +185,7 @@ Then open the URL the dev server prints (typically **https://localhost:4200** �
 ### 6. Sign in and open Trading Assistant
 
 - Sign in with the default admin token: `ghostfolio-admin-default-token` (or the value of `DEFAULT_ADMIN_TOKEN` if you set a custom one). Use the **Security Token** login on the Ghostfolio sign-in page.
-- Alternatively, click **Try Demo** on the login page to use the pre-seeded demo account.
+- Alternatively, click **Try Demo** on the login page — this logs you into the admin account so you can see the trading agent's portfolio, trades, and watchlist immediately.
 - In the top nav you should see **Portfolio**, **Accounts**, **Resources**, and **Trading Assistant**.
 - Click **Trading Assistant** to use the chat.
 
@@ -818,7 +815,7 @@ Hard gate. All items required to pass:
 - [x] Basic error handling (graceful failure, not crashes)
 - [x] At least one domain-specific verification check
 - [x] Simple evaluation: 5+ test cases with expected outcomes
-- [ ] Deployed and publicly accessible
+- [x] Deployed and publicly accessible
 
 > A simple agent with reliable tool execution beats a complex agent that hallucinates or fails unpredictably.
 
