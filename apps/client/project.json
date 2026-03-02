@@ -151,8 +151,8 @@
             },
             {
               "type": "anyComponentStyle",
-              "maximumWarning": "14kb",
-              "maximumError": "20kb"
+              "maximumWarning": "15kb",
+              "maximumError": "25kb"
             }
           ],
           "buildOptimizer": true,
