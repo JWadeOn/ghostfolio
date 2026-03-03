@@ -48,7 +48,12 @@ def check_context_node(state: AgentState) -> dict[str, Any]:
 
     portfolio = state.get("portfolio")
     portfolio_ts = state.get("portfolio_timestamp")
-    if portfolio and _is_fresh(portfolio_ts, PORTFOLIO_TTL):
+    portfolio_is_empty = (
+        isinstance(portfolio, dict)
+        and isinstance(portfolio.get("holdings"), list)
+        and len(portfolio.get("holdings", [])) == 0
+    )
+    if portfolio and _is_fresh(portfolio_ts, PORTFOLIO_TTL) and not portfolio_is_empty:
         logger.info("Portfolio cache is fresh, preloading into state")
         updates["portfolio"] = portfolio
         updates["portfolio_timestamp"] = portfolio_ts

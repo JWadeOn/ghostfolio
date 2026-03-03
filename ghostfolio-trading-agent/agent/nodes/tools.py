@@ -194,6 +194,11 @@ def execute_tools_node(state: AgentState) -> dict[str, Any]:
         elif tool_name == "get_portfolio_snapshot" and err is None:
             portfolio = result
             portfolio_timestamp = now_ts
+        elif tool_name == "create_activity" and err is None:
+            # Activity changes the portfolio — invalidate cache so the next
+            # query fetches fresh data from Ghostfolio.
+            portfolio = None
+            portfolio_timestamp = None
 
         result_str = json.dumps(result, default=str)
         if len(result_str) > 8000:
